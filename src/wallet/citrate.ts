@@ -9,10 +9,18 @@
 // Implements the SDK's Signer interface (CM-04 WP-04.3) so the
 // existing Flow A x402 path works without modification.
 
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  type Address,
+  type Chain,
+  type Hex,
+  type PublicClient,
+} from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { type Address, type Hex } from 'viem';
 
-import type { Signer } from '../x402.js';
+import type { TxSigner } from '../x402.js';
 import {
   decryptKeystore,
   encryptKeystore,
@@ -36,12 +44,23 @@ export interface CitrateWalletState {
 ///
 /// To get a `Signer` for use with the SDK's X402Client, instantiate
 /// CitrateWallet via `unlock(passphrase)` and pass it to the form.
-export class CitrateWallet implements Signer {
+///
+/// W-01 slice 2: also implements `TxSigner` — `sendTransaction`
+/// builds an EIP-155 legacy tx, signs via viem, posts via
+/// `eth_sendRawTransaction`. Requires an RPC URL + chain id at
+/// construction time (or via `connect()` after unlock).
+export class CitrateWallet implements TxSigner {
   /// EVM address derived from the private key. Stable across lock /
   /// unlock cycles.
   readonly address: Address;
   /// In-memory account handle from viem. Cleared on `lock()`.
   private account: ReturnType<typeof privateKeyToAccount> | null;
+  /// Tx-send chain config. Populated by `connect()` (or the
+  /// convenience `createWallet` / `unlockWallet` factories when
+  /// they're given a chain). `sendTransaction` requires this;
+  /// digest-only flows (x402 sign) do not.
+  private chain: Chain | null = null;
+  private publicClient: PublicClient | null = null;
 
   constructor(privateKey: Uint8Array) {
     if (privateKey.length !== 32) {
@@ -57,6 +76,18 @@ export class CitrateWallet implements Signer {
     return this.account !== null;
   }
 
+  /// Wire the wallet to a chain so `sendTransaction` works. Digest-
+  /// only flows (x402) don't require this. Returns `this` for
+  /// chaining.
+  connect(chain: Chain, rpcUrl?: string): this {
+    this.chain = chain;
+    this.publicClient = createPublicClient({
+      chain,
+      transport: http(rpcUrl),
+    });
+    return this;
+  }
+
   /// Sign a 32-byte digest. Throws if locked. Conforms to the
   /// SDK Signer interface — viem's account.sign returns the 65-byte
   /// EIP-155 hex which X402Client's signChallenge parses.
@@ -65,6 +96,35 @@ export class CitrateWallet implements Signer {
       throw new Error('CitrateWallet: locked; call unlock() first');
     }
     return this.account.sign({ hash: args.hash });
+  }
+
+  /// Build, sign, and broadcast an EIP-155 tx. Returns the tx
+  /// hash from `eth_sendRawTransaction`. Caller polls for the
+  /// receipt separately (or uses
+  /// `publicClient.waitForTransactionReceipt`).
+  async sendTransaction(tx: {
+    to: Address;
+    data?: Hex;
+    value?: bigint;
+  }): Promise<Hex> {
+    if (!this.account) {
+      throw new Error('CitrateWallet: locked; call unlock() first');
+    }
+    if (!this.chain || !this.publicClient) {
+      throw new Error(
+        'CitrateWallet: not connected to a chain; call connect(chain, rpcUrl)',
+      );
+    }
+    const wallet = createWalletClient({
+      chain: this.chain,
+      transport: http(this.publicClient.transport.url),
+      account: this.account,
+    });
+    return wallet.sendTransaction({
+      to: tx.to,
+      data: tx.data,
+      value: tx.value,
+    });
   }
 
   /// Drop the in-memory key. Subsequent sign() calls reject.

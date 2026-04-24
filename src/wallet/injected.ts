@@ -9,9 +9,9 @@
 //
 // Implements the SDK Signer interface (CM-04 WP-04.3).
 
-import { type Address, type Hex } from 'viem';
+import { numberToHex, type Address, type Hex } from 'viem';
 
-import type { Signer } from '../x402.js';
+import type { TxSigner } from '../x402.js';
 import { CITRATE_TESTNET_CHAIN_ID } from '../contracts.js';
 
 /// Minimal shape of `window.ethereum` we depend on. Avoids bringing
@@ -42,7 +42,7 @@ export interface InjectedSignerOptions {
   provider?: EthereumProvider;
 }
 
-export class InjectedSigner implements Signer {
+export class InjectedSigner implements TxSigner {
   readonly address: Address;
   /// The chain id this connection is locked to. The connect() flow
   /// already enforced it; exposed so callers can sanity-check
@@ -118,5 +118,37 @@ export class InjectedSigner implements Signer {
       );
     }
     return sig as Hex;
+  }
+
+  /// Send a transaction via the injected provider. Thin wrapper
+  /// around `window.ethereum.request({ method: 'eth_sendTransaction' })`
+  /// — the provider handles nonce + gas + signing + broadcast
+  /// internally and returns the tx hash.
+  ///
+  /// W-01 slice 2. Mirrors CitrateWallet.sendTransaction's surface
+  /// so DirectJobForm and the /credits buy form can swap backends
+  /// freely.
+  async sendTransaction(tx: {
+    to: Address;
+    data?: Hex;
+    value?: bigint;
+  }): Promise<Hex> {
+    const params: Record<string, string> = {
+      from: this.address,
+      to: tx.to,
+    };
+    if (tx.data !== undefined) params.data = tx.data;
+    if (tx.value !== undefined) params.value = numberToHex(tx.value);
+
+    const result = (await this.provider.request({
+      method: 'eth_sendTransaction',
+      params: [params],
+    })) as string;
+    if (typeof result !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(result)) {
+      throw new Error(
+        `InjectedSigner.sendTransaction: malformed tx hash from provider: ${result}`,
+      );
+    }
+    return result as Hex;
   }
 }

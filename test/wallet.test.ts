@@ -16,6 +16,7 @@ import {
   InjectedSigner,
   type EthereumProvider,
 } from '../src/wallet/injected.js';
+import { isTxSigner } from '../src/x402.js';
 
 // Deterministic test key — mirrors the dev key the gateway smoke
 // tests use, so signatures from this wallet match what the gateway
@@ -115,6 +116,31 @@ describe('CitrateWallet', () => {
   test('rejects non-32-byte key in constructor', () => {
     expect(() => new CitrateWallet(new Uint8Array(16))).toThrow(/32-byte/);
   });
+
+  // W-01 slice 2 — sendTransaction requires connect() first.
+  test('sendTransaction rejects when not connected to a chain', async () => {
+    const wallet = new CitrateWallet(TEST_KEY);
+    await expect(
+      wallet.sendTransaction({
+        to: ('0x' + 'ab'.repeat(20)) as Hex,
+      }),
+    ).rejects.toThrow(/not connected/i);
+  });
+
+  test('sendTransaction rejects when locked', async () => {
+    const wallet = new CitrateWallet(TEST_KEY);
+    wallet.lock();
+    await expect(
+      wallet.sendTransaction({
+        to: ('0x' + 'ab'.repeat(20)) as Hex,
+      }),
+    ).rejects.toThrow(/locked/i);
+  });
+
+  test('implements TxSigner runtime guard', () => {
+    const wallet = new CitrateWallet(TEST_KEY);
+    expect(isTxSigner(wallet)).toBe(true);
+  });
 });
 
 describe('InjectedSigner', () => {
@@ -202,6 +228,67 @@ describe('InjectedSigner', () => {
 
   test('connect throws when no provider is available', async () => {
     await expect(InjectedSigner.connect({})).rejects.toThrow(/no window\.ethereum/i);
+  });
+
+  // W-01 slice 2 — sendTransaction routes to eth_sendTransaction.
+
+  test('sendTransaction routes to eth_sendTransaction', async () => {
+    const txHash = '0x' + 'ab'.repeat(32);
+    const { provider, calls } = mockProvider({
+      eth_requestAccounts: () => ['0x' + 'a1'.repeat(20)],
+      eth_chainId: () => '0x9d0c',
+      eth_sendTransaction: () => txHash,
+    });
+    const signer = await InjectedSigner.connect({ provider });
+    const out = await signer.sendTransaction({
+      to: ('0x' + 'ff'.repeat(20)) as Hex,
+      value: 1_000_000_000_000_000_000n,
+    });
+    expect(out).toBe(txHash);
+    const sendCall = calls.find((c) => c.method === 'eth_sendTransaction');
+    expect(sendCall).toBeDefined();
+    const params = sendCall!.params as Array<Record<string, string>>;
+    expect(params[0].from.toLowerCase()).toBe('0x' + 'a1'.repeat(20));
+    expect(params[0].to.toLowerCase()).toBe('0x' + 'ff'.repeat(20));
+    // value is serialised as hex: 1e18 = 0xDE0B6B3A7640000
+    expect(params[0].value).toBe('0xde0b6b3a7640000');
+  });
+
+  test('sendTransaction omits value + data when unset', async () => {
+    const { provider, calls } = mockProvider({
+      eth_requestAccounts: () => ['0x' + 'a1'.repeat(20)],
+      eth_chainId: () => '0x9d0c',
+      eth_sendTransaction: () => '0x' + 'cd'.repeat(32),
+    });
+    const signer = await InjectedSigner.connect({ provider });
+    await signer.sendTransaction({
+      to: ('0x' + 'ff'.repeat(20)) as Hex,
+    });
+    const sendCall = calls.find((c) => c.method === 'eth_sendTransaction');
+    const params = sendCall!.params as Array<Record<string, string>>;
+    expect('value' in params[0]).toBe(false);
+    expect('data' in params[0]).toBe(false);
+  });
+
+  test('sendTransaction rejects malformed hash from provider', async () => {
+    const { provider } = mockProvider({
+      eth_requestAccounts: () => ['0x' + 'a1'.repeat(20)],
+      eth_chainId: () => '0x9d0c',
+      eth_sendTransaction: () => '0xbad', // wrong length
+    });
+    const signer = await InjectedSigner.connect({ provider });
+    await expect(
+      signer.sendTransaction({ to: ('0x' + '00'.repeat(20)) as Hex }),
+    ).rejects.toThrow(/malformed tx hash/i);
+  });
+
+  test('InjectedSigner implements TxSigner runtime guard', async () => {
+    const { provider } = mockProvider({
+      eth_requestAccounts: () => ['0x' + 'a1'.repeat(20)],
+      eth_chainId: () => '0x9d0c',
+    });
+    const signer = await InjectedSigner.connect({ provider });
+    expect(isTxSigner(signer)).toBe(true);
   });
 
   test('hasInjectedProvider reflects window.ethereum presence', () => {

@@ -69,6 +69,7 @@ export {
   decodePaymentHeader,
   eip712Digest,
   encodePaymentHeader,
+  isTxSigner,
   paymentToBytes,
   PAYLOAD_BYTES,
   signChallenge,
@@ -77,5 +78,6 @@ export {
   type PaymentChallenge,
   type PaymentPayload,
   type Signer,
+  type TxSigner,
   type X402ClientOptions,
 } from './x402.js';

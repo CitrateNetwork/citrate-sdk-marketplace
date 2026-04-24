@@ -247,6 +247,29 @@ export interface Signer {
   sign(args: { hash: Hex }): Promise<{ r: Hex; s: Hex; v: bigint } | Hex>;
 }
 
+/// Extension capability for signers that can send raw transactions
+/// (W-01 slice 2). Optional — not every Signer exposes it; callers
+/// that need tx-send should check `'sendTransaction' in signer`
+/// before using. Both CitrateWallet and InjectedSigner implement
+/// this; the dev-key path does via viem's account.sign + a
+/// WalletClient.
+export interface TxSigner extends Signer {
+  /// Send a transaction. Returns the tx hash once accepted by the
+  /// caller's wallet adapter (NOT necessarily confirmed on-chain —
+  /// caller polls `eth_getTransactionReceipt` separately).
+  sendTransaction(tx: {
+    to: Address;
+    data?: Hex;
+    value?: bigint;
+  }): Promise<Hex>;
+}
+
+/// Narrow runtime guard for callers to detect whether a Signer is
+/// also a TxSigner.
+export function isTxSigner(s: Signer): s is TxSigner {
+  return typeof (s as { sendTransaction?: unknown }).sendTransaction === 'function';
+}
+
 /// Build a signed PaymentPayload from the server's PaymentChallenge.
 ///
 /// The advertised `challenge.digest` is a *preview* (server didn't
