@@ -1,0 +1,38 @@
+{
+  "name": "@citrate-ai/marketplace-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the Citrate compute marketplace. Contract bindings, ABI decoders, x402 payment client, and types matching the Rust gateway.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "citrate",
+    "compute",
+    "marketplace",
+    "x402",
+    "ai",
+    "ethereum"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
