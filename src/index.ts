@@ -32,3 +32,20 @@ export {
   type ProviderProfile,
   type VerificationTierValue,
 } from './types.js';
+
+export {
+  X402Client,
+  bytesToPayment,
+  decodePaymentHeader,
+  eip712Digest,
+  encodePaymentHeader,
+  paymentToBytes,
+  PAYLOAD_BYTES,
+  signChallenge,
+  transferWithAuthorizationStructHash,
+  wsaltDomainSeparator,
+  type PaymentChallenge,
+  type PaymentPayload,
+  type Signer,
+  type X402ClientOptions,
+} from './x402.js';
