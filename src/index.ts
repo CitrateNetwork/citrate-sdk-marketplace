@@ -45,6 +45,25 @@ export {
 } from './jobs.js';
 
 export {
+  CitrateWallet,
+  clearKeystore,
+  createWallet,
+  decryptKeystore,
+  encryptKeystore,
+  hasInjectedProvider,
+  hasStoredKeystore,
+  InjectedSigner,
+  peekKeystoreAddress,
+  unlockWallet,
+  WalletKind,
+  type CitrateWalletState,
+  type EthereumProvider,
+  type InjectedSignerOptions,
+  type Keystore,
+  type WalletKindValue,
+} from './wallet/index.js';
+
+export {
   X402Client,
   bytesToPayment,
   decodePaymentHeader,
