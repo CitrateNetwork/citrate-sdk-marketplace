@@ -48,6 +48,10 @@ export const computeMarketplaceAbi = [
   // the digest as raw bytes, which lets a CID or alternative-hash
   // scheme also be carried. The SDK's postJobCalldata() helper
   // computes keccak256 by default.
+  //
+  // Two overloads (CM-06 WP-06.1):
+  //   postJob (legacy 6-arg) — defaults to PaymentMethod.SALT
+  //   postJobWithMethod (7-arg) — explicit PaymentMethod choice
   {
     name: 'postJob',
     type: 'function',
@@ -61,6 +65,30 @@ export const computeMarketplaceAbi = [
       { name: 'execWindow', type: 'uint256' },
     ],
     outputs: [{ name: 'jobId', type: 'uint256' }],
+  },
+  {
+    name: 'postJobWithMethod',
+    type: 'function',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'modelHash', type: 'bytes32' },
+      { name: 'inputHash', type: 'bytes' },
+      { name: 'maxPrice', type: 'uint256' },
+      { name: 'tier', type: 'uint8' },
+      { name: 'paymentMethod', type: 'uint8' },
+      { name: 'bidWindow', type: 'uint256' },
+      { name: 'execWindow', type: 'uint256' },
+    ],
+    outputs: [{ name: 'jobId', type: 'uint256' }],
+  },
+  {
+    type: 'event',
+    name: 'JobPaymentMethodSet',
+    inputs: [
+      { name: 'jobId', type: 'uint256', indexed: true },
+      { name: 'method', type: 'uint8' },
+    ],
+    anonymous: false,
   },
   // ── Events tracked by the timeline UI ──
   {

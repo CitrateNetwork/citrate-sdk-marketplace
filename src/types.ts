@@ -37,6 +37,20 @@ export interface ProviderProfile {
   maxConcurrentJobs: bigint;
 }
 
+/// Payment method for `ComputeMarketplace.postJobWithMethod`
+/// (CM-06 WP-06.1).
+///
+///   SALT       : caller sends msg.value = maxPrice in SALT
+///   BulkCredits: caller has a credit balance in BulkComputeGateway;
+///                the marketplace debits the SALT-equivalent amount
+///                of credits at post time. msg.value MUST be 0.
+export const PaymentMethod = {
+  SALT: 0,
+  BulkCredits: 1,
+} as const;
+export type PaymentMethodValue =
+  (typeof PaymentMethod)[keyof typeof PaymentMethod];
+
 /// Verification tier — passed to `ComputePricingOracle.estimateJobCost`
 /// and to `ComputeMarketplace.postJob`.
 export const VerificationTier = {

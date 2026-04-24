@@ -8,6 +8,7 @@ import {
   postJobCalldata,
   TIER,
 } from '../src/jobs.js';
+import { PaymentMethod } from '../src/types.js';
 import { computeMarketplaceAbi } from '../src/abi/compute-marketplace.js';
 import { encodeAbiParameters } from 'viem';
 
@@ -61,6 +62,55 @@ describe('postJobCalldata', () => {
     );
     const expectedSelector = slice(sigHash, 0, 4);
     expect(slice(data, 0, 4)).toBe(expectedSelector);
+  });
+
+  test('paymentMethod=BulkCredits routes to postJobWithMethod selector', () => {
+    const { data: saltData } = postJobCalldata({
+      modelHash: MODEL_HASH,
+      input: '0xab' as Hex,
+      maxPriceGrains: 1n,
+      tier: TIER.Commitment,
+      bidWindowBlocks: 1n,
+      execWindowBlocks: 1n,
+      paymentMethod: PaymentMethod.SALT,
+    });
+    const { data: creditsData } = postJobCalldata({
+      modelHash: MODEL_HASH,
+      input: '0xab' as Hex,
+      maxPriceGrains: 1n,
+      tier: TIER.Commitment,
+      bidWindowBlocks: 1n,
+      execWindowBlocks: 1n,
+      paymentMethod: PaymentMethod.BulkCredits,
+    });
+    // Different selectors → different first 4 bytes.
+    expect(saltData.slice(0, 10)).not.toBe(creditsData.slice(0, 10));
+  });
+
+  test('paymentMethod omitted defaults to SALT (postJob selector)', () => {
+    const { data: defaulted } = postJobCalldata({
+      modelHash: MODEL_HASH,
+      input: '0xab' as Hex,
+      maxPriceGrains: 1n,
+      tier: TIER.Commitment,
+      bidWindowBlocks: 1n,
+      execWindowBlocks: 1n,
+    });
+    const { data: explicit } = postJobCalldata({
+      modelHash: MODEL_HASH,
+      input: '0xab' as Hex,
+      maxPriceGrains: 1n,
+      tier: TIER.Commitment,
+      bidWindowBlocks: 1n,
+      execWindowBlocks: 1n,
+      paymentMethod: PaymentMethod.SALT,
+    });
+    expect(defaulted).toBe(explicit);
+  });
+
+  test('PaymentMethod constants match the on-chain enum positions', () => {
+    expect(PaymentMethod.SALT).toBe(0);
+    expect(PaymentMethod.BulkCredits).toBe(1);
   });
 
   test('TIER constants match the on-chain enum positions', () => {

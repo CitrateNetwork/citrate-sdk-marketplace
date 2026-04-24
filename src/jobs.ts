@@ -19,7 +19,9 @@ import {
 
 import { computeMarketplaceAbi } from './abi/compute-marketplace.js';
 import {
+  PaymentMethod,
   VerificationTier,
+  type PaymentMethodValue,
   type VerificationTierValue,
 } from './types.js';
 
@@ -44,13 +46,23 @@ export interface PostJobArgs {
   /// Number of blocks the assigned provider has to deliver after
   /// assignment.
   execWindowBlocks: bigint;
+  /// Optional payment method (CM-06 WP-06.4). Defaults to SALT.
+  /// When BulkCredits, the calldata targets `postJobWithMethod`
+  /// instead of `postJob`, and callers MUST send `value = 0n` with
+  /// the resulting tx (the marketplace's NoMixedPayment guard
+  /// reverts otherwise).
+  paymentMethod?: PaymentMethodValue;
 }
 
-/// Build calldata for `ComputeMarketplace.postJob(...)`. Returns the
-/// calldata + the resolved `inputHash` bytes that will be sent.
+/// Build calldata for `ComputeMarketplace.postJob(...)` (or the
+/// `postJobWithMethod` overload when `paymentMethod` is supplied).
+/// Returns the calldata + the resolved `inputHash` bytes that will
+/// be sent.
 ///
 /// The caller is responsible for sending the resulting calldata via
-/// their wallet with `value = maxPriceGrains` (postJob is payable).
+/// their wallet with the right `value`:
+///   - SALT path        → `value = maxPriceGrains` (postJob is payable)
+///   - BulkCredits path → `value = 0n` (NoMixedPayment guard)
 export function postJobCalldata(args: PostJobArgs): {
   data: Hex;
   inputHash: Hex;
@@ -60,18 +72,38 @@ export function postJobCalldata(args: PostJobArgs): {
       ? keccak256(args.input)
       : asBytesHex(args.input);
 
-  const data = encodeFunctionData({
-    abi: computeMarketplaceAbi,
-    functionName: 'postJob',
-    args: [
-      args.modelHash,
-      inputHash,
-      args.maxPriceGrains,
-      args.tier,
-      args.bidWindowBlocks,
-      args.execWindowBlocks,
-    ],
-  });
+  const method = args.paymentMethod ?? PaymentMethod.SALT;
+  // Route to `postJobWithMethod` only when the caller asked for
+  // something other than SALT. Keeping the SALT path on the legacy
+  // `postJob` selector means existing indexers that filter by
+  // `postJob` selector keep working unchanged.
+  const data =
+    method === PaymentMethod.SALT
+      ? encodeFunctionData({
+          abi: computeMarketplaceAbi,
+          functionName: 'postJob',
+          args: [
+            args.modelHash,
+            inputHash,
+            args.maxPriceGrains,
+            args.tier,
+            args.bidWindowBlocks,
+            args.execWindowBlocks,
+          ],
+        })
+      : encodeFunctionData({
+          abi: computeMarketplaceAbi,
+          functionName: 'postJobWithMethod',
+          args: [
+            args.modelHash,
+            inputHash,
+            args.maxPriceGrains,
+            args.tier,
+            method,
+            args.bidWindowBlocks,
+            args.execWindowBlocks,
+          ],
+        });
 
   return { data, inputHash };
 }

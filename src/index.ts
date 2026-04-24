@@ -28,7 +28,9 @@ export {
 
 export {
   MarketplaceError,
+  PaymentMethod,
   VerificationTier,
+  type PaymentMethodValue,
   type ProviderInfo,
   type ProviderProfile,
   type VerificationTierValue,
