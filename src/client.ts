@@ -12,7 +12,29 @@
 //   - postJob() write helper (needs WalletClient injection)
 //   - watchJob(jobId): event subscription via viem's watchEvent
 
-import { type Address, type Hex, type PublicClient, isAddress } from 'viem';
+import { type Address, type Hex, type Log, type PublicClient, isAddress } from 'viem';
+
+const purchasedEvent = {
+  type: 'event',
+  name: 'CreditsPurchased',
+  inputs: [
+    { name: 'institution', type: 'address', indexed: true },
+    { name: 'stablecoin', type: 'address', indexed: true },
+    { name: 'usdAmount', type: 'uint256', indexed: false },
+    { name: 'creditsReceived', type: 'uint256', indexed: false },
+    { name: 'purchaseIndex', type: 'uint256', indexed: false },
+  ],
+} as const;
+
+const spentEvent = {
+  type: 'event',
+  name: 'CreditsSpent',
+  inputs: [
+    { name: 'institution', type: 'address', indexed: true },
+    { name: 'spender', type: 'address', indexed: true },
+    { name: 'creditAmount', type: 'uint256', indexed: false },
+  ],
+} as const;
 
 import { bulkComputeGatewayAbi } from './abi/bulk-compute-gateway.js';
 import { computeMarketplaceAbi } from './abi/compute-marketplace.js';
@@ -164,6 +186,49 @@ export class MarketplaceClient {
         cause,
       );
     }
+  }
+
+  /**
+   * Fetch CreditsPurchased + CreditsSpent logs for an institution
+   * between two blocks. Used by the /credits history table. The
+   * caller parses the raw logs through parseCreditsEvents() — we
+   * return Log[] here (not typed events) so the UI can merge the
+   * results with a polling loop that tracks seen txHashes without
+   * re-decoding.
+   *
+   * Returns an empty array when bulkComputeGateway is the zero
+   * sentinel — no pre-deployment RPC thrash.
+   */
+  async fetchCreditsLogs(
+    institution: Address,
+    fromBlock: bigint | 'earliest',
+    toBlock: bigint | 'latest',
+  ): Promise<Log[]> {
+    if (this.addresses.bulkComputeGateway === '0x0000000000000000000000000000000000000000') {
+      return [];
+    }
+    const gateway = this.addresses.bulkComputeGateway;
+    // Two separate getLogs calls because the event signatures differ
+    // — viem doesn't batch filters for distinct event ABIs. We merge
+    // client-side. Errors on either fan out through a Promise.all
+    // so one failing filter fails the whole fetch (callers retry).
+    const [purchasedLogs, spentLogs] = await Promise.all([
+      this.publicClient.getLogs({
+        address: gateway,
+        event: purchasedEvent,
+        args: { institution },
+        fromBlock,
+        toBlock,
+      }),
+      this.publicClient.getLogs({
+        address: gateway,
+        event: spentEvent,
+        args: { institution },
+        fromBlock,
+        toBlock,
+      }),
+    ]);
+    return [...purchasedLogs, ...spentLogs] as Log[];
   }
 
   /**
