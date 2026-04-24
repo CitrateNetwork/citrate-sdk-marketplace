@@ -115,6 +115,51 @@ describe('estimateCost', () => {
   });
 });
 
+describe('getCreditBalance', () => {
+  test('returns 0n when bulkComputeGateway address is zero', async () => {
+    const m = mockClient({});
+    const c = new MarketplaceClient({ publicClient: m.publicClient });
+    const out = await c.getCreditBalance(('0x' + 'ab'.repeat(20)) as Address);
+    expect(out).toBe(0n);
+    expect(m.calls).toHaveLength(0); // never hit the chain
+  });
+
+  test('forwards to BulkComputeGateway.getCreditBalance when configured', async () => {
+    const m = mockClient({ getCreditBalance: 1_000_000_000_000_000_000n });
+    const c = new MarketplaceClient({
+      publicClient: m.publicClient,
+      addresses: {
+        modelRegistry: '0x' + 'aa'.repeat(20) as Address,
+        pricingOracle: '0x' + 'bb'.repeat(20) as Address,
+        inferenceRouter: '0x' + 'cc'.repeat(20) as Address,
+        computeMarketplace: '0x' + 'dd'.repeat(20) as Address,
+        bulkComputeGateway: '0x' + 'ee'.repeat(20) as Address,
+      },
+    });
+    const out = await c.getCreditBalance(('0x' + 'ab'.repeat(20)) as Address);
+    expect(out).toBe(1_000_000_000_000_000_000n);
+    expect(m.calls[0].functionName).toBe('getCreditBalance');
+    expect(m.calls[0].address).toBe(('0x' + 'ee'.repeat(20)) as Address);
+  });
+
+  test('rejects malformed institution addresses', async () => {
+    const m = mockClient({});
+    const c = new MarketplaceClient({
+      publicClient: m.publicClient,
+      addresses: {
+        modelRegistry: '0x' + 'aa'.repeat(20) as Address,
+        pricingOracle: '0x' + 'bb'.repeat(20) as Address,
+        inferenceRouter: '0x' + 'cc'.repeat(20) as Address,
+        computeMarketplace: '0x' + 'dd'.repeat(20) as Address,
+        bulkComputeGateway: '0x' + 'ee'.repeat(20) as Address,
+      },
+    });
+    await expect(
+      c.getCreditBalance('not-an-address' as Address),
+    ).rejects.toThrow(MarketplaceError);
+  });
+});
+
 describe('getProviderProfile', () => {
   test('returns null for unregistered address', async () => {
     const a = ('0x' + '99'.repeat(20)) as Address;

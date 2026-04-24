@@ -4,6 +4,7 @@
 // viem dep just for the types we accept.
 export type { Address, Hex } from 'viem';
 
+export { bulkComputeGatewayAbi } from './abi/bulk-compute-gateway.js';
 export { computeMarketplaceAbi } from './abi/compute-marketplace.js';
 export { computePricingOracleAbi } from './abi/compute-pricing-oracle.js';
 export { inferenceRouterAbi } from './abi/inference-router.js';

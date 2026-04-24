@@ -11,10 +11,13 @@ export const TESTNET_ADDRESSES = {
   modelRegistry: '0x077fbc3338a9e6bad90a3a041e6b7425689754ef' as Address,
   pricingOracle: '0x46773aeca885be65cd313b7d9bce9625767d40b5' as Address,
   inferenceRouter: '0xad7c3135c1b9b3189208fd617b6b058c1c0469f3' as Address,
-  // ComputeMarketplace not yet deployed to testnet at the time of
-  // this slice — buyer-webapp Flow B reads will resolve via env
-  // override until the address lands.
+  // ComputeMarketplace + BulkComputeGateway not yet deployed to
+  // testnet at the time of this slice — buyer-webapp Flow B (CM-04)
+  // and /credits (CM-06) reads resolve via env override until the
+  // addresses land. Slice-1 webapp pages render an "address not
+  // configured" hint when these are zero.
   computeMarketplace: '0x0000000000000000000000000000000000000000' as Address,
+  bulkComputeGateway: '0x0000000000000000000000000000000000000000' as Address,
 } as const;
 
 /// Per-environment address resolver. Webapp callers should pass in
@@ -24,6 +27,7 @@ export interface MarketplaceAddresses {
   pricingOracle: Address;
   inferenceRouter: Address;
   computeMarketplace: Address;
+  bulkComputeGateway: Address;
 }
 
 /// Convenience: testnet defaults.

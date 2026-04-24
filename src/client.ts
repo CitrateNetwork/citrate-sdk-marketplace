@@ -14,6 +14,7 @@
 
 import { type Address, type Hex, type PublicClient, isAddress } from 'viem';
 
+import { bulkComputeGatewayAbi } from './abi/bulk-compute-gateway.js';
 import { computeMarketplaceAbi } from './abi/compute-marketplace.js';
 import { computePricingOracleAbi } from './abi/compute-pricing-oracle.js';
 import { inferenceRouterAbi } from './abi/inference-router.js';
@@ -124,6 +125,40 @@ export class MarketplaceClient {
     } catch (cause) {
       throw new MarketplaceError(
         `estimateJobCost failed: ${(cause as Error).message ?? cause}`,
+        'chain_unavailable',
+        cause,
+      );
+    }
+  }
+
+  /**
+   * Read an institution's credit balance from BulkComputeGateway
+   * (CM-06 WP-06.3). Returns the raw PFLOP-hour count (18 decimals).
+   *
+   * Returns `0n` when `bulkComputeGateway` is the zero address — the
+   * webapp uses this to render an "address not configured" hint
+   * without throwing.
+   */
+  async getCreditBalance(institution: Address): Promise<bigint> {
+    if (this.addresses.bulkComputeGateway === '0x0000000000000000000000000000000000000000') {
+      return 0n;
+    }
+    if (!isAddress(institution)) {
+      throw new MarketplaceError(
+        `invalid institution: ${institution}`,
+        'invalid_address',
+      );
+    }
+    try {
+      return (await this.publicClient.readContract({
+        address: this.addresses.bulkComputeGateway,
+        abi: bulkComputeGatewayAbi,
+        functionName: 'getCreditBalance',
+        args: [institution],
+      })) as bigint;
+    } catch (cause) {
+      throw new MarketplaceError(
+        `getCreditBalance failed: ${(cause as Error).message ?? cause}`,
         'chain_unavailable',
         cause,
       );
