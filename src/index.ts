@@ -34,6 +34,14 @@ export {
 } from './types.js';
 
 export {
+  parseJobEvents,
+  postJobCalldata,
+  TIER,
+  type JobEvent,
+  type PostJobArgs,
+} from './jobs.js';
+
+export {
   X402Client,
   bytesToPayment,
   decodePaymentHeader,

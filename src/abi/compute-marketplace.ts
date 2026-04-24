@@ -43,15 +43,20 @@ export const computeMarketplaceAbi = [
     ],
   },
   // ── Job posting (Flow B) ──
+  // NOTE: `inputHash` is `bytes` (not bytes32) on-chain. The contract
+  // expects the caller to have already hashed input data and pass
+  // the digest as raw bytes, which lets a CID or alternative-hash
+  // scheme also be carried. The SDK's postJobCalldata() helper
+  // computes keccak256 by default.
   {
     name: 'postJob',
     type: 'function',
     stateMutability: 'payable',
     inputs: [
       { name: 'modelHash', type: 'bytes32' },
-      { name: 'inputHash', type: 'bytes32' },
+      { name: 'inputHash', type: 'bytes' },
       { name: 'maxPrice', type: 'uint256' },
-      { name: 'verificationTier', type: 'uint8' },
+      { name: 'tier', type: 'uint8' },
       { name: 'bidWindow', type: 'uint256' },
       { name: 'execWindow', type: 'uint256' },
     ],
