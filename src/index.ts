@@ -7,7 +7,17 @@ export type { Address, Hex } from 'viem';
 export { bulkComputeGatewayAbi } from './abi/bulk-compute-gateway.js';
 export { computeMarketplaceAbi } from './abi/compute-marketplace.js';
 export { computePricingOracleAbi } from './abi/compute-pricing-oracle.js';
+export { erc20Abi } from './abi/erc20.js';
 export { inferenceRouterAbi } from './abi/inference-router.js';
+
+export {
+  erc20ApproveCalldata,
+  parseCreditsEvents,
+  purchaseComputeCreditsCalldata,
+  type CreditsEvent,
+  type Erc20ApproveArgs,
+  type PurchaseComputeCreditsArgs,
+} from './credits.js';
 
 export {
   CITRATE_TESTNET_CHAIN_ID,

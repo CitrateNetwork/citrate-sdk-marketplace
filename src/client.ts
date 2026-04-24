@@ -17,6 +17,7 @@ import { type Address, type Hex, type PublicClient, isAddress } from 'viem';
 import { bulkComputeGatewayAbi } from './abi/bulk-compute-gateway.js';
 import { computeMarketplaceAbi } from './abi/compute-marketplace.js';
 import { computePricingOracleAbi } from './abi/compute-pricing-oracle.js';
+import { erc20Abi } from './abi/erc20.js';
 import { inferenceRouterAbi } from './abi/inference-router.js';
 import {
   defaultAddresses,
@@ -162,6 +163,68 @@ export class MarketplaceClient {
         'chain_unavailable',
         cause,
       );
+    }
+  }
+
+  /**
+   * Read ERC20.allowance(owner, spender) for the credits buy flow.
+   * The webapp uses this to skip the approve step when the existing
+   * allowance already covers the requested amount. Returns 0n on
+   * any read failure (conservative — callers then prompt approve).
+   */
+  async erc20Allowance(
+    token: Address,
+    owner: Address,
+    spender: Address,
+  ): Promise<bigint> {
+    try {
+      return (await this.publicClient.readContract({
+        address: token,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [owner, spender],
+      })) as bigint;
+    } catch {
+      return 0n;
+    }
+  }
+
+  /**
+   * Read ERC20.balanceOf(account) for the connected buyer. Used by
+   * the buy-credits form to render "insufficient USDC" ahead of the
+   * on-chain revert. Returns 0n on failure.
+   */
+  async erc20BalanceOf(token: Address, account: Address): Promise<bigint> {
+    try {
+      return (await this.publicClient.readContract({
+        address: token,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [account],
+      })) as bigint;
+    } catch {
+      return 0n;
+    }
+  }
+
+  /**
+   * Read the MIN_PURCHASE_USD constant from BulkComputeGateway so
+   * the buy form can validate input before a revert. Falls back to
+   * the Solidity default (10_000_000 = $10.00 at 6 decimals) when
+   * the address is zero or the read fails.
+   */
+  async minPurchaseUsd(): Promise<bigint> {
+    if (this.addresses.bulkComputeGateway === '0x0000000000000000000000000000000000000000') {
+      return 10_000_000n;
+    }
+    try {
+      return (await this.publicClient.readContract({
+        address: this.addresses.bulkComputeGateway,
+        abi: bulkComputeGatewayAbi,
+        functionName: 'MIN_PURCHASE_USD',
+      })) as bigint;
+    } catch {
+      return 10_000_000n;
     }
   }
 
