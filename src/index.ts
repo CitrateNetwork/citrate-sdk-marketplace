@@ -1,5 +1,9 @@
 // @citrate-ai/marketplace-sdk — public surface.
 
+// Re-export viem's Address + Hex so consumers don't need a direct
+// viem dep just for the types we accept.
+export type { Address, Hex } from 'viem';
+
 export { computeMarketplaceAbi } from './abi/compute-marketplace.js';
 export { computePricingOracleAbi } from './abi/compute-pricing-oracle.js';
 export { inferenceRouterAbi } from './abi/inference-router.js';
