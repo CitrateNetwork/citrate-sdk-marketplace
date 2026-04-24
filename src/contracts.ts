@@ -18,6 +18,10 @@ export const TESTNET_ADDRESSES = {
   // configured" hint when these are zero.
   computeMarketplace: '0x0000000000000000000000000000000000000000' as Address,
   bulkComputeGateway: '0x0000000000000000000000000000000000000000' as Address,
+  // ComputePoolTraining v3 (CM-07). Deployed to testnet during
+  // CM-07 WP-07.1 rollout; zero sentinel while staged for
+  // development against the Rust-side MockChainClient.
+  computePoolTraining: '0x0000000000000000000000000000000000000000' as Address,
 } as const;
 
 /// Per-environment address resolver. Webapp callers should pass in
@@ -28,6 +32,7 @@ export interface MarketplaceAddresses {
   inferenceRouter: Address;
   computeMarketplace: Address;
   bulkComputeGateway: Address;
+  computePoolTraining: Address;
 }
 
 /// Convenience: testnet defaults.
