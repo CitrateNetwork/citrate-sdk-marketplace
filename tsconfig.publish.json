@@ -1,0 +1,18 @@
+{
+  "//": "RM-I / WP-I2.5 — npm-publish tsconfig for @citrate-ai/marketplace-sdk.",
+  "//1": "Mirrors citrate-js's tsconfig.publish.json (RM-G2.6 / SDK-03+SUP-11).",
+  "//2": "The 2026-04-25 re-audit (Stream 7) caught that the marketplace SDK",
+  "//3": "was forgotten in the prior round's source-map-strip fix; the",
+  "//4": "package npm consumers actually install was still shipping",
+  "//5": "sourceMap=true + declarationMap=true, leaking build-host paths.",
+  "//6": "This config is referenced by `prepublishOnly` in package.json so",
+  "//7": "every npm publish strips maps; local `npm run build` keeps them",
+  "//8": "for IDE tooling.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "sourceMap": false,
+    "declarationMap": false,
+    "inlineSourceMap": false,
+    "inlineSources": false
+  }
+}
