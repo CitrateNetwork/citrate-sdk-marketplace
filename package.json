@@ -5,11 +5,12 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "scripts": {
     "build": "tsc",
+    "build:publish": "tsc -p tsconfig.publish.json",
+    "prepublishOnly": "rm -rf dist && tsc -p tsconfig.publish.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts",
