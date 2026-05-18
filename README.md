@@ -1,75 +1,39 @@
-# @citrate-ai/marketplace-sdk
+---
+created: 2026-05-18T00:17:44Z
+branch: main
+author: monorepo-split
+status: active
+split-from-monorepo-at: b3ccd5c7
+split-from-monorepo-tag: pre-split-v0.4.0
+archived-monorepo: https://github.com/CitrateNetwork/citrate-monorepo-archive
+agentile-archive: https://github.com/CitrateNetwork/citrate-agentile-archive
+---
 
-TypeScript SDK for the Citrate compute marketplace. Read providers,
-estimate inference cost, and (in slice 2) post jobs + watch events
-— all via [viem](https://viem.sh).
+# citrate-sdk-marketplace
 
-This package is the canonical TS bindings layer. The buyer webapp
-(`citrate_v0.01.1/buyer-webapp/`) consumes it; external integrators
-should too.
+Marketplace SDK for Citrate Network (TypeScript)
 
-## Status
+## Repository context
 
-**Slice 1** (this release): read-only, hand-curated ABIs.
+This repo was split from the **Citrate monorepo** on 2026-05-18. For the full history of decisions, sprints, audits, remediations, and ADRs that led to the split, see:
 
-| Surface | Status |
-|---------|--------|
-| `MarketplaceClient.listProviders(modelHash)` | ✅ |
-| `MarketplaceClient.estimateCost(...)` | ✅ |
-| `MarketplaceClient.getProviderProfile(addr)` | ✅ |
-| `grainsToSalt` / `grainsToSaltDisplay` formatters | ✅ |
-| `postJob` write helper | slice 2 |
-| `watchJob(id)` event subscription | slice 2 |
-| Rust→TS ABI generator (drift detector) | slice 2 |
+- **Monorepo archive**: https://github.com/CitrateNetwork/citrate-monorepo-archive — pre-split source + history (frozen)
+- **Agentile archive**: https://github.com/CitrateNetwork/citrate-agentile-archive — methodology corpus (rules, planset, sprints, audits)
 
-The hand-curated ABIs MUST stay in sync with `contracts/src/*.sol`.
-Verified against the Rust gateway via shared selector goldens
-(`gateway/tests/http_queries_wiring.rs`).
+The source paths inside the pre-split monorepo were:
 
-## Install
-
-The SDK is currently consumed via workspace `file:` links — npm
-publish lands when the public surface stabilises.
-
-```jsonc
-// in your package.json
-"@citrate-ai/marketplace-sdk": "file:../sdks/javascript/citrate-marketplace"
+```
+--path citrate_v0.01.1/sdks/javascript/citrate-marketplace/ --path-rename citrate_v0.01.1/sdks/javascript/citrate-marketplace/:
 ```
 
-## Usage
+## Releases
 
-```ts
-import { createPublicClient, http, defineChain } from 'viem';
-import {
-  MarketplaceClient,
-  CITRATE_TESTNET_CHAIN_ID,
-  grainsToSaltDisplay,
-} from '@citrate-ai/marketplace-sdk';
+This repo versions **independently** from other CitrateNetwork repos. See GitHub Releases for tagged versions.
 
-const chain = defineChain({
-  id: CITRATE_TESTNET_CHAIN_ID,
-  name: 'Citrate Testnet',
-  nativeCurrency: { name: 'SALT', symbol: 'SALT', decimals: 18 },
-  rpcUrls: { default: { http: ['https://rpc.citrate.ai'] } },
-});
+## Contributing
 
-const client = new MarketplaceClient({
-  publicClient: createPublicClient({ chain, transport: http() }),
-});
+This repo inherits the operating rules from `CitrateNetwork/citrate-agentile-archive/rules/CORE_RULES.md`. The Agentile framework's 13 non-negotiable rules apply uniformly across all CitrateNetwork repos.
 
-const providers = await client.listProviders(
-  '0xababababababababababababababababababababababababababababababababab',
-);
-for (const p of providers) {
-  console.log(p.address, grainsToSaltDisplay(p.stake));
-}
-```
+## License
 
-## Development
-
-```bash
-npm install
-npm test         # vitest, 19 tests
-npm run typecheck
-npm run build    # outputs dist/
-```
+Inherits from the monorepo. See [`LICENSE`](LICENSE) if present, or the [monorepo archive](https://github.com/CitrateNetwork/citrate-monorepo-archive/blob/main/LICENSE).
