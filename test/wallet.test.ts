@@ -4,7 +4,7 @@
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { privateKeyToAccount } from 'viem/accounts';
-import type { Hex } from 'viem';
+import type { Address, Hex } from 'viem';
 
 import {
   CitrateWallet,
@@ -212,6 +212,36 @@ describe('InjectedSigner', () => {
     const out = await signer.sign({ hash: ('0x' + 'cd'.repeat(32)) as Hex });
     expect(out).toBe(sig);
     expect(calls[calls.length - 1].method).toBe('personal_sign');
+  });
+
+  // RM-C CITRATE_SDK_MARKETPLACE-001: EIP-712 payment auth must go through
+  // eth_signTypedData_v4 (signs the typed-data digest itself), NOT personal_sign
+  // (which adds the EIP-191 prefix and would not ecrecover on-chain).
+  test('TRIPWIRE: signEip712 routes to eth_signTypedData_v4 with structured data', async () => {
+    const sig = '0x' + 'bb'.repeat(65);
+    const { provider, calls } = mockProvider({
+      eth_requestAccounts: () => ['0x' + 'a1'.repeat(20)],
+      eth_chainId: () => '0x9d0c',
+      eth_signTypedData_v4: () => sig,
+    });
+    const signer = await InjectedSigner.connect({ provider });
+    const out = await signer.signEip712({
+      domain: {
+        name: 'Wrapped SALT',
+        version: '1',
+        chainId: 40204,
+        verifyingContract: ('0x' + '89'.repeat(20)) as Address,
+      },
+      types: { TransferWithAuthorization: [{ name: 'from', type: 'address' }] },
+      primaryType: 'TransferWithAuthorization',
+      message: { from: signer.address },
+    });
+    expect(out).toBe(sig);
+    const last = calls[calls.length - 1];
+    expect(last.method).toBe('eth_signTypedData_v4');
+    // The signed param is the structured typed data, not a bare 32-byte digest.
+    const params = last.params as [string, string];
+    expect(JSON.parse(params[1]).primaryType).toBe('TransferWithAuthorization');
   });
 
   test('rejects malformed signature shape from provider', async () => {

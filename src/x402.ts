@@ -239,12 +239,36 @@ function base64UrlDecode(s: string): Uint8Array {
 /// WalletClient. Accept anything that can produce an EVM address and
 /// sign a 32-byte digest. Both `privateKeyToAccount` (dev) and a
 /// wagmi WalletClient (slice 2) satisfy this.
+/// EIP-712 typed-data payload for `eth_signTypedData_v4`-style signing.
+/// uint256 fields are decimal strings and bytes32/address are 0x-hex — the JSON
+/// shape browser wallets expect.
+export interface Eip712TypedData {
+  domain: {
+    name: string;
+    version: string;
+    chainId: number;
+    verifyingContract: Address;
+  };
+  types: Record<string, Array<{ name: string; type: string }>>;
+  primaryType: string;
+  message: Record<string, string>;
+}
+
 export interface Signer {
   /// 0x-prefixed checksummed (or lowercase) address.
   readonly address: Address;
   /// Produce an EVM-canonical (v ∈ {27, 28}) ECDSA signature over the
-  /// 32-byte hash. viem's account.sign({ hash }) matches.
+  /// 32-byte hash. viem's account.sign({ hash }) matches. For a raw-key signer
+  /// this is the correct way to sign an EIP-712 digest (it signs the digest
+  /// itself). Browser wallets MUST NOT use this for EIP-712 — see signEip712.
   sign(args: { hash: Hex }): Promise<{ r: Hex; s: Hex; v: bigint } | Hex>;
+  /// Optional: sign EIP-712 *typed data* (eth_signTypedData_v4 semantics),
+  /// returning a 65-byte (132-char) hex signature. Injected/browser wallets
+  /// MUST implement this for payment authorizations: routing an EIP-712 digest
+  /// through personal_sign adds the EIP-191 prefix, so on-chain ecrecover of the
+  /// typed-data digest would NOT match (audit CITRATE_SDK_MARKETPLACE-...-001).
+  /// signChallenge prefers this when present and falls back to sign() otherwise.
+  signEip712?(typedData: Eip712TypedData): Promise<Hex>;
 }
 
 /// Extension capability for signers that can send raw transactions
@@ -296,7 +320,46 @@ export async function signChallenge(
   });
   const digest = eip712Digest({ domainSeparator: domain, structHash });
 
-  const sig = await signer.sign({ hash: digest });
+  // Prefer EIP-712 typed-data signing (eth_signTypedData_v4) when the signer
+  // supports it — required for browser wallets, whose personal_sign would add
+  // the EIP-191 prefix and break on-chain ecrecover. Raw-key signers omit
+  // signEip712 and sign the exact digest, which ecrecovers correctly.
+  // Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-001.
+  const sig = signer.signEip712
+    ? await signer.signEip712({
+        domain: {
+          name: DOMAIN_NAME,
+          version: DOMAIN_VERSION,
+          chainId: challenge.chain_id,
+          verifyingContract: challenge.token,
+        },
+        types: {
+          EIP712Domain: [
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+            { name: 'chainId', type: 'uint256' },
+            { name: 'verifyingContract', type: 'address' },
+          ],
+          TransferWithAuthorization: [
+            { name: 'from', type: 'address' },
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'validAfter', type: 'uint256' },
+            { name: 'validBefore', type: 'uint256' },
+            { name: 'nonce', type: 'bytes32' },
+          ],
+        },
+        primaryType: 'TransferWithAuthorization',
+        message: {
+          from: signer.address,
+          to: challenge.recipient,
+          value: value.toString(),
+          validAfter: validAfter.toString(),
+          validBefore: validBefore.toString(),
+          nonce: challenge.nonce,
+        },
+      })
+    : await signer.sign({ hash: digest });
   let r: Hex;
   let s: Hex;
   let v: number;
@@ -334,20 +397,40 @@ export async function signChallenge(
 
 export interface X402ClientOptions {
   signer: Signer;
-  /// Optional: cap how much the client is willing to pay in a single
-  /// retry. Mirrors the Rust client's `budget_wei`. If the server's
-  /// challenged amount exceeds this, the retry is skipped and the
-  /// 402 is returned to the caller.
-  maxPayWei?: bigint;
+  /// REQUIRED: hard cap on how much the client will auto-pay for a single
+  /// challenge. A challenge above this is returned to the caller unsigned. The
+  /// server dictates the amount, so an explicit client cap is mandatory — there
+  /// is no implicit "unlimited" mode. Audit: CITRATE_SDK_MARKETPLACE-...-002.
+  maxPayWei: bigint;
+  /// REQUIRED: the chain id the client will sign payments for. A challenge for
+  /// any other chain is rejected (no cross-chain redirection of a signed auth).
+  chainId: number;
+  /// REQUIRED: the token contract(s) the client will pay in. A challenge naming
+  /// any other token is rejected (the server cannot redirect payment to an
+  /// attacker-chosen token). Compared case-insensitively.
+  allowedTokens: Address[];
+  /// Optional: if set, the challenge recipient must be one of these (pin the
+  /// payee). Compared case-insensitively.
+  allowedRecipients?: Address[];
   /// Optional: drop in a custom fetch (for tests). Defaults to global.
   fetch?: typeof fetch;
+}
+
+/// Case-insensitive EVM address equality.
+function addrEq(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
 }
 
 /// Auto-pay-on-402 client.
 ///
 /// Usage:
 /// ```ts
-/// const client = new X402Client({ signer });
+/// const client = new X402Client({
+///   signer,
+///   chainId: 40204,
+///   allowedTokens: ['0x…wSALT'],
+///   maxPayWei: 1_000_000_000_000_000_000n, // 1 token, hard cap
+/// });
 /// const resp = await client.send('http://gateway/v1/chat/completions', {
 ///   method: 'POST',
 ///   body: JSON.stringify({ model: 'llama-3.1-8b', messages: [...] }),
@@ -378,12 +461,22 @@ export class X402Client {
     const challenge = extractChallenge(body);
     if (!challenge) return first;
 
-    if (this.opts.maxPayWei !== undefined) {
-      const ask = BigInt(challenge.amount);
-      if (ask > this.opts.maxPayWei) {
-        return first;
-      }
+    // Mandatory binding: never sign a payment authorization the client did not
+    // pin. The 402 server dictates token / chain / recipient / amount, so each
+    // is checked against the client's policy before signing — a malicious or
+    // compromised gateway cannot redirect payment to another chain, token, or
+    // payee, nor exceed the cap. Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-002.
+    if (challenge.chain_id !== this.opts.chainId) return first;
+    if (!this.opts.allowedTokens.some((t) => addrEq(t, challenge.token))) {
+      return first;
     }
+    if (
+      this.opts.allowedRecipients !== undefined &&
+      !this.opts.allowedRecipients.some((r) => addrEq(r, challenge.recipient))
+    ) {
+      return first;
+    }
+    if (BigInt(challenge.amount) > this.opts.maxPayWei) return first;
 
     const payload = await signChallenge(challenge, this.opts.signer);
     const headerVal = encodePaymentHeader(payload);
