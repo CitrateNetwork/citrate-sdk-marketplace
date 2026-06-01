@@ -193,6 +193,9 @@ describe('signChallenge', () => {
 
 describe('X402Client.send', () => {
   const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+  // Client policy matching the test challenge() below (RM-C mandatory binding).
+  const TOKEN = '0x8951ae72e5479cae28ef7bb3caa4207d5719e24b' as Address;
+  const MAX = 10_000_000_000_000_000_000_000n;
 
   function challenge(amount = '1000000000000000000'): PaymentChallenge {
     return {
@@ -220,7 +223,13 @@ describe('X402Client.send', () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({ object: 'chat.completion' }, 200),
     );
-    const client = new X402Client({ signer: account, fetch: fetchMock });
+    const client = new X402Client({
+      signer: account,
+      fetch: fetchMock,
+      chainId: 40204,
+      allowedTokens: [TOKEN],
+      maxPayWei: MAX,
+    });
     const resp = await client.send('http://gw/v1/chat/completions');
     expect(resp.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -235,7 +244,13 @@ describe('X402Client.send', () => {
         }
         return jsonResponse({ x402: challenge() }, 402);
       });
-    const client = new X402Client({ signer: account, fetch: fetchMock });
+    const client = new X402Client({
+      signer: account,
+      fetch: fetchMock,
+      chainId: 40204,
+      allowedTokens: [TOKEN],
+      maxPayWei: MAX,
+    });
     const resp = await client.send('http://gw/v1/chat/completions', {
       method: 'POST',
     });
@@ -254,6 +269,8 @@ describe('X402Client.send', () => {
     const client = new X402Client({
       signer: account,
       fetch: fetchMock,
+      chainId: 40204,
+      allowedTokens: [TOKEN],
       maxPayWei: 1n,
     });
     const resp = await client.send('http://gw/v1/chat/completions');
@@ -265,7 +282,13 @@ describe('X402Client.send', () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({ error: 'something else' }, 402),
     );
-    const client = new X402Client({ signer: account, fetch: fetchMock });
+    const client = new X402Client({
+      signer: account,
+      fetch: fetchMock,
+      chainId: 40204,
+      allowedTokens: [TOKEN],
+      maxPayWei: MAX,
+    });
     const resp = await client.send('http://gw/v1/chat/completions');
     expect(resp.status).toBe(402);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -275,9 +298,55 @@ describe('X402Client.send', () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({ error: 'down' }, 503),
     );
-    const client = new X402Client({ signer: account, fetch: fetchMock });
+    const client = new X402Client({
+      signer: account,
+      fetch: fetchMock,
+      chainId: 40204,
+      allowedTokens: [TOKEN],
+      maxPayWei: MAX,
+    });
     const resp = await client.send('http://gw/v1/chat/completions');
     expect(resp.status).toBe(503);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ── RM-C CITRATE_SDK_MARKETPLACE-002 binding tripwires ──
+  // Each serves a 402 the server controls; the client must REFUSE to sign
+  // (return the 402, fetch called once — no sign+retry) when a bound field
+  // doesn't match its policy.
+  test('TRIPWIRE: 402 on a different chain is refused', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ x402: { ...challenge(), chain_id: 99999 } }, 402),
+    );
+    const client = new X402Client({
+      signer: account, fetch: fetchMock, chainId: 40204, allowedTokens: [TOKEN], maxPayWei: MAX,
+    });
+    const resp = await client.send('http://gw/v1/chat/completions');
+    expect(resp.status).toBe(402);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('TRIPWIRE: 402 for a non-allowlisted token is refused', async () => {
+    const evilToken = ('0x' + 'be'.repeat(20)) as Address;
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ x402: { ...challenge(), token: evilToken } }, 402),
+    );
+    const client = new X402Client({
+      signer: account, fetch: fetchMock, chainId: 40204, allowedTokens: [TOKEN], maxPayWei: MAX,
+    });
+    const resp = await client.send('http://gw/v1/chat/completions');
+    expect(resp.status).toBe(402);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('TRIPWIRE: 402 to a non-pinned recipient is refused when recipients are pinned', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ x402: challenge() }, 402));
+    const client = new X402Client({
+      signer: account, fetch: fetchMock, chainId: 40204, allowedTokens: [TOKEN], maxPayWei: MAX,
+      allowedRecipients: [('0x' + 'c3'.repeat(20)) as Address],
+    });
+    const resp = await client.send('http://gw/v1/chat/completions');
+    expect(resp.status).toBe(402);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

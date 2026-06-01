@@ -11,7 +11,7 @@
 
 import { numberToHex, type Address, type Hex } from 'viem';
 
-import type { TxSigner } from '../x402.js';
+import type { TxSigner, Eip712TypedData } from '../x402.js';
 import { CITRATE_TESTNET_CHAIN_ID } from '../contracts.js';
 
 /// Minimal shape of `window.ethereum` we depend on. Avoids bringing
@@ -104,9 +104,13 @@ export class InjectedSigner implements TxSigner {
     return new InjectedSigner(address, provider, chainId);
   }
 
-  /// Sign a 32-byte digest. Routes to `personal_sign` because that
-  /// produces the EIP-155 canonical 65-byte signature shape the SDK
-  /// X402Client's `signChallenge` expects.
+  /// Sign a 32-byte digest via `personal_sign` (EIP-191 prefixed).
+  ///
+  /// ⚠️ This MUST NOT be used for EIP-712 payment authorizations: personal_sign
+  /// prepends `"\x19Ethereum Signed Message:\n32"`, so an on-chain ecrecover of
+  /// the raw EIP-712 digest would not match. `signChallenge` uses `signEip712`
+  /// (below) for this signer instead. `sign` remains for non-EIP-712 digests
+  /// where EIP-191 framing is the intended preimage.
   async sign(args: { hash: Hex }): Promise<Hex> {
     const sig = (await this.provider.request({
       method: 'personal_sign',
@@ -115,6 +119,23 @@ export class InjectedSigner implements TxSigner {
     if (typeof sig !== 'string' || !sig.startsWith('0x') || sig.length !== 132) {
       throw new Error(
         `InjectedSigner: malformed signature from provider (length ${sig?.length ?? 'n/a'})`,
+      );
+    }
+    return sig as Hex;
+  }
+
+  /// Sign EIP-712 typed data via `eth_signTypedData_v4`. The wallet signs the
+  /// EIP-712 digest itself (no EIP-191 prefix), so the resulting 65-byte
+  /// signature ecrecovers to this address on-chain. Used by `signChallenge` for
+  /// x402 payment authorizations. Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-001.
+  async signEip712(typedData: Eip712TypedData): Promise<Hex> {
+    const sig = (await this.provider.request({
+      method: 'eth_signTypedData_v4',
+      params: [this.address, JSON.stringify(typedData)],
+    })) as string;
+    if (typeof sig !== 'string' || !sig.startsWith('0x') || sig.length !== 132) {
+      throw new Error(
+        `InjectedSigner: malformed signTypedData signature (length ${sig?.length ?? 'n/a'})`,
       );
     }
     return sig as Hex;
