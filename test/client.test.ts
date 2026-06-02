@@ -118,7 +118,14 @@ describe('estimateCost', () => {
 describe('getCreditBalance', () => {
   test('returns 0n when bulkComputeGateway address is zero', async () => {
     const m = mockClient({});
-    const c = new MarketplaceClient({ publicClient: m.publicClient });
+    // Explicit zero override (the default is now the live deployment).
+    const c = new MarketplaceClient({
+      publicClient: m.publicClient,
+      addresses: {
+        ...TESTNET_ADDRESSES,
+        bulkComputeGateway: ('0x' + '00'.repeat(20)) as Address,
+      },
+    });
     const out = await c.getCreditBalance(('0x' + 'ab'.repeat(20)) as Address);
     expect(out).toBe(0n);
     expect(m.calls).toHaveLength(0); // never hit the chain
