@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc",
     "build:publish": "tsc -p tsconfig.publish.json",
+    "prepare": "tsc",
     "prepublishOnly": "rm -rf dist && tsc -p tsconfig.publish.json",
     "test": "vitest run",
     "test:watch": "vitest",
