@@ -15,7 +15,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sync-addresses": "node scripts/sync-addresses.mjs",
+    "sync-addresses:check": "node scripts/sync-addresses.mjs --check"
   },
   "keywords": [
     "citrate",
