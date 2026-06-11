@@ -421,6 +421,17 @@ function addrEq(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
 }
 
+// Wire-format validators — the 402 challenge is untrusted server
+// input, and the client policy may arrive from plain JS, so both are
+// checked at runtime rather than trusting the TypeScript types.
+const HEX_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const HEX_BYTES32_RE = /^0x[0-9a-fA-F]{64}$/;
+const DECIMAL_STRING_RE = /^[0-9]+$/;
+
+function isHexAddress(v: unknown): v is Address {
+  return typeof v === 'string' && HEX_ADDRESS_RE.test(v);
+}
+
 /// Auto-pay-on-402 client.
 ///
 /// Usage:
@@ -441,6 +452,43 @@ export class X402Client {
   private readonly fetchImpl: typeof fetch;
 
   constructor(opts: X402ClientOptions) {
+    // Fail CLOSED: the spend policy must hold at runtime, not just in the
+    // type system. A plain-JS caller (or an `as any` cast) that omits
+    // `maxPayWei` would otherwise get a silent uncapped auto-pay —
+    // `BigInt(amount) > undefined` evaluates to `false`, so the cap check
+    // never trips. There is no implicit "unlimited" mode: an absent or
+    // malformed policy field refuses construction. Audit: FUA-SDK-MKT-01.
+    if (typeof opts.maxPayWei !== 'bigint' || opts.maxPayWei < 0n) {
+      throw new Error(
+        'X402Client: maxPayWei is required and must be a non-negative bigint — omitting it is not an unlimited mode',
+      );
+    }
+    if (
+      typeof opts.chainId !== 'number' ||
+      !Number.isInteger(opts.chainId) ||
+      opts.chainId <= 0
+    ) {
+      throw new Error('X402Client: chainId is required and must be a positive integer');
+    }
+    if (
+      !Array.isArray(opts.allowedTokens) ||
+      opts.allowedTokens.length === 0 ||
+      !opts.allowedTokens.every(isHexAddress)
+    ) {
+      throw new Error(
+        'X402Client: allowedTokens is required and must be a non-empty array of 0x-prefixed 20-byte hex addresses',
+      );
+    }
+    if (
+      opts.allowedRecipients !== undefined &&
+      (!Array.isArray(opts.allowedRecipients) ||
+        opts.allowedRecipients.length === 0 ||
+        !opts.allowedRecipients.every(isHexAddress))
+    ) {
+      throw new Error(
+        'X402Client: allowedRecipients, when provided, must be a non-empty array of 0x-prefixed 20-byte hex addresses',
+      );
+    }
     this.opts = opts;
     this.fetchImpl = opts.fetch ?? fetch;
   }
@@ -477,6 +525,10 @@ export class X402Client {
       return first;
     }
     if (BigInt(challenge.amount) > this.opts.maxPayWei) return first;
+    // Never sign an already-expired authorization window — the window's
+    // internal coherence (after < before, integer bounds) is validated in
+    // extractChallenge. Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-003.
+    if (challenge.valid_before <= Math.floor(Date.now() / 1000)) return first;
 
     const payload = await signChallenge(challenge, this.opts.signer);
     const headerVal = encodePaymentHeader(payload);
@@ -492,21 +544,35 @@ function extractChallenge(body: unknown): PaymentChallenge | null {
   const x402 = (body as { x402?: unknown }).x402;
   if (!x402 || typeof x402 !== 'object') return null;
   const c = x402 as Record<string, unknown>;
-  // Light validation. Trust the server's shape; anything missing
-  // means we can't sign and we return the original 402.
-  for (const k of [
-    'version',
-    'facilitator',
-    'token',
-    'chain_id',
-    'amount',
-    'nonce',
-    'valid_after',
-    'valid_before',
-    'recipient',
-    'digest',
-  ]) {
-    if (!(k in c)) return null;
+  // Fail CLOSED on shape: the challenge is untrusted server input, so every
+  // field is type/format-validated before use. Anything malformed means we
+  // can't sign — return null so `send` hands back the original 402 instead
+  // of throwing mid-flight (a malformed `amount` used to make `BigInt()`
+  // throw, breaking send's return-the-402 contract).
+  // Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-003.
+  if (typeof c.version !== 'number' || !Number.isInteger(c.version)) return null;
+  if (!isHexAddress(c.facilitator)) return null;
+  if (!isHexAddress(c.token)) return null;
+  if (typeof c.chain_id !== 'number' || !Number.isInteger(c.chain_id)) return null;
+  if (typeof c.amount !== 'string' || !DECIMAL_STRING_RE.test(c.amount)) return null;
+  if (typeof c.nonce !== 'string' || !HEX_BYTES32_RE.test(c.nonce)) return null;
+  if (
+    typeof c.valid_after !== 'number' ||
+    !Number.isInteger(c.valid_after) ||
+    c.valid_after < 0
+  ) {
+    return null;
   }
+  if (
+    typeof c.valid_before !== 'number' ||
+    !Number.isInteger(c.valid_before) ||
+    c.valid_before < 0
+  ) {
+    return null;
+  }
+  // Incoherent validity window — nothing could ever settle inside it.
+  if (c.valid_after >= c.valid_before) return null;
+  if (!isHexAddress(c.recipient)) return null;
+  if (typeof c.digest !== 'string' || !HEX_BYTES32_RE.test(c.digest)) return null;
   return c as unknown as PaymentChallenge;
 }

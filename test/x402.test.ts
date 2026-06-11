@@ -198,6 +198,9 @@ describe('X402Client.send', () => {
   const MAX = 10_000_000_000_000_000_000_000n;
 
   function challenge(amount = '1000000000000000000'): PaymentChallenge {
+    // Live validity window — send() now refuses to sign an expired
+    // challenge (SECREM-02 5.3 / -003), so fixtures must be fresh.
+    const now = Math.floor(Date.now() / 1000);
     return {
       version: 1,
       facilitator: ('0x' + 'fa'.repeat(20)) as Address,
@@ -205,8 +208,8 @@ describe('X402Client.send', () => {
       chain_id: 40204,
       amount,
       nonce: ('0x' + '77'.repeat(32)) as Hex,
-      valid_after: 1_714_000_000,
-      valid_before: 1_714_000_300,
+      valid_after: now - 60,
+      valid_before: now + 300,
       recipient: ('0x' + 'a2'.repeat(20)) as Address,
       digest: ('0x' + '00'.repeat(32)) as Hex,
     };
