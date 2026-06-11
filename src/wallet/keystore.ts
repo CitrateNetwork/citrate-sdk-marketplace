@@ -124,7 +124,17 @@ export async function decryptKeystore(
 
   const macInput = concatBytes(derivedKey.slice(16, 32), ciphertext);
   const mac = await keccak256(macInput);
-  if (bytesToPlainHex(mac) !== ks.crypto.mac.toLowerCase()) {
+  // Constant-time MAC check — a string `!==` short-circuits on the first
+  // differing character, leaking match-prefix length through timing.
+  // A malformed stored mac decodes to nothing comparable → same error.
+  // Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-005.
+  let storedMac: Uint8Array;
+  try {
+    storedMac = plainHexToBytes(ks.crypto.mac.toLowerCase());
+  } catch {
+    throw new Error('invalid passphrase');
+  }
+  if (!constantTimeEqual(mac, storedMac)) {
     throw new Error('invalid passphrase');
   }
 
@@ -143,6 +153,20 @@ export async function decryptKeystore(
     ),
   );
   return plaintext;
+}
+
+/// Constant-time byte-array equality. Always scans the full length of
+/// both inputs — no data-dependent early exit — so comparison time
+/// doesn't leak how many leading bytes matched. Length mismatch
+/// returns false (lengths are public here: keccak256 MACs are always
+/// 32 bytes). Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-005.
+export function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  const len = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < len; i++) {
+    diff |= (a[i] ?? 0) ^ (b[i] ?? 0);
+  }
+  return diff === 0;
 }
 
 // ── Internals ──────────────────────────────────────────────────
