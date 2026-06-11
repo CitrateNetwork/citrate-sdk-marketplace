@@ -104,6 +104,25 @@ export class InjectedSigner implements TxSigner {
     return new InjectedSigner(address, provider, chainId);
   }
 
+  /// Re-query the provider's active chain and throw if it no longer
+  /// matches the chain this signer was connected to. The connect-time
+  /// check alone is a TOCTOU hole: the user (or a racing dapp) can
+  /// switch the wallet to another chain after connect(), and every
+  /// later signature/tx would silently target the wrong chain. Called
+  /// by every signing-path method; fails CLOSED on any unparseable
+  /// response. Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-004.
+  private async assertChainUnchanged(): Promise<void> {
+    const currentHex = (await this.provider.request({
+      method: 'eth_chainId',
+    })) as string;
+    const currentId = parseInt(currentHex, 16);
+    if (currentId !== this.chainId) {
+      throw new Error(
+        `InjectedSigner: provider chain changed (now ${currentId}, connected to ${this.chainId}); refusing to sign`,
+      );
+    }
+  }
+
   /// Sign a 32-byte digest via `personal_sign` (EIP-191 prefixed).
   ///
   /// ⚠️ This MUST NOT be used for EIP-712 payment authorizations: personal_sign
@@ -112,6 +131,7 @@ export class InjectedSigner implements TxSigner {
   /// (below) for this signer instead. `sign` remains for non-EIP-712 digests
   /// where EIP-191 framing is the intended preimage.
   async sign(args: { hash: Hex }): Promise<Hex> {
+    await this.assertChainUnchanged();
     const sig = (await this.provider.request({
       method: 'personal_sign',
       params: [args.hash, this.address],
@@ -129,6 +149,7 @@ export class InjectedSigner implements TxSigner {
   /// signature ecrecovers to this address on-chain. Used by `signChallenge` for
   /// x402 payment authorizations. Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-001.
   async signEip712(typedData: Eip712TypedData): Promise<Hex> {
+    await this.assertChainUnchanged();
     const sig = (await this.provider.request({
       method: 'eth_signTypedData_v4',
       params: [this.address, JSON.stringify(typedData)],
@@ -154,6 +175,7 @@ export class InjectedSigner implements TxSigner {
     data?: Hex;
     value?: bigint;
   }): Promise<Hex> {
+    await this.assertChainUnchanged();
     const params: Record<string, string> = {
       from: this.address,
       to: tx.to,
