@@ -39,9 +39,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Tests MUST gate the publish: the audit tripwires (signEip712
+      # routing, x402 fail-closed policy) only have teeth if a red
+      # suite blocks the release. Do NOT add continue-on-error here —
+      # that was finding FUA-SDK-MKT-02.
       - name: Test
         run: npm test
-        continue-on-error: true
 
       - name: Verify version matches tag (if triggered by tag)
         if: startsWith(github.ref, 'refs/tags/v')
