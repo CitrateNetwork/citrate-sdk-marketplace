@@ -1,5 +1,5 @@
 {
-  "name": "@citratenetwork/marketplace-sdk",
+  "name": "@citratelabs/marketplace-sdk",
   "version": "0.1.0",
   "description": "TypeScript SDK for the Citrate compute marketplace. Contract bindings, ABI decoders, x402 payment client, and types matching the Rust gateway.",
   "main": "dist/index.js",
