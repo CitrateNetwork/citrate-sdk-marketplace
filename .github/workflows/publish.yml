@@ -2,7 +2,7 @@ name: Publish to npm
 
 # Manually dispatched after main has been tagged. Requires the
 # NPM_TOKEN repo secret with publish permissions on the
-# @citratenetwork org. Without that secret, this workflow fails
+# @citratelabs org. Without that secret, this workflow fails
 # loudly on the publish step — the build step still verifies that
 # the package is buildable.
 
