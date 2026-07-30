@@ -10,3 +10,31 @@ permissions:
 jobs:
   js:
     uses: CitrateNetwork/.github/.github/workflows/reusable-js-ci.yml@main
+
+  # CL-C2 / SW-179: fail the build if the vendored addresses.json drifts from the
+  # canonical citrate-chain 40204.json. The reusable JS CI only runs
+  # lint/build/test, so vendored-address drift shipped silently. Requires a
+  # read-only token for CitrateNetwork/citrate-chain; inert until GitHub Actions
+  # + CITRATE_CHAIN_READ_TOKEN are available (the local mirror
+  # scripts/check-address-drift.sh runs the identical check meanwhile).
+  address-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          path: citrate-sdk-marketplace
+      - name: Checkout canonical citrate-chain (sparse)
+        uses: actions/checkout@v4
+        with:
+          repository: CitrateNetwork/citrate-chain
+          ref: main
+          token: ${{ secrets.CITRATE_CHAIN_READ_TOKEN }}
+          path: citrate-chain
+          sparse-checkout: |
+            contracts/addresses
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Address drift gate (blocking)
+        run: cd citrate-sdk-marketplace && npm run sync-addresses:check
