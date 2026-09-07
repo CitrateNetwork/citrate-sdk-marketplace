@@ -18,6 +18,7 @@ import {
 } from 'viem';
 
 import { computeMarketplaceAbi } from './abi/compute-marketplace.js';
+import { isHexAddress } from './x402.js';
 import {
   PaymentMethod,
   VerificationTier,
@@ -148,9 +149,27 @@ const KNOWN_EVENT_NAMES = new Set(['JobPosted', 'JobAssigned', 'JobCompleted']);
 /// Decode logs from a tx receipt or `eth_getLogs` query into typed
 /// `JobEvent`s. Logs that don't match a known signature are ignored
 /// silently.
-export function parseJobEvents(logs: readonly Log[]): JobEvent[] {
+///
+/// `expectedEmitter` (the ComputeMarketplace address) is REQUIRED and every
+/// log whose `log.address` does not match it is dropped — decoding by ABI
+/// signature alone would accept a correctly-shaped job event emitted by ANY
+/// contract, letting an attacker forge job state. Compared case-insensitively.
+/// Audit: SMK-B-006.
+export function parseJobEvents(
+  logs: readonly Log[],
+  expectedEmitter: Address,
+): JobEvent[] {
+  if (!isHexAddress(expectedEmitter)) {
+    throw new Error(
+      'parseJobEvents: expectedEmitter must be a 0x-prefixed 20-byte hex address (the ComputeMarketplace contract)',
+    );
+  }
+  const emitter = expectedEmitter.toLowerCase();
   const out: JobEvent[] = [];
   for (const log of logs) {
+    if (typeof log.address !== 'string' || log.address.toLowerCase() !== emitter) {
+      continue;
+    }
     let decoded;
     try {
       decoded = decodeEventLog({
