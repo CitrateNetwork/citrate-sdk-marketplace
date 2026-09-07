@@ -59,10 +59,20 @@ jobs:
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # SMK-B-001: never interpolate the free-text `workflow_dispatch`
+          # input into the run: script text — GitHub substitutes ${{ }} BEFORE
+          # bash runs, so a value like `latest"; curl … #` would break out of
+          # the string and execute with NODE_AUTH_TOKEN in scope. Pass it
+          # through env: instead, so bash only ever sees it as data, and
+          # validate it against a strict allowlist below.
+          DIST_TAG: ${{ github.event.inputs.tag || 'latest' }}
         run: |
           if [[ -z "$NODE_AUTH_TOKEN" ]]; then
             echo "::error::NPM_TOKEN secret is not set on this repo. Cannot publish."
             exit 1
           fi
-          DIST_TAG="${{ github.event.inputs.tag || 'latest' }}"
+          if [[ ! "$DIST_TAG" =~ ^(latest|next|beta|rc)$ ]]; then
+            echo "::error::Refusing to publish: dist-tag '$DIST_TAG' is not one of latest|next|beta|rc."
+            exit 1
+          fi
           npm publish --access public --tag "$DIST_TAG"

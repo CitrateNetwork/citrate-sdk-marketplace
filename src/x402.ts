@@ -402,6 +402,14 @@ export interface X402ClientOptions {
   /// server dictates the amount, so an explicit client cap is mandatory — there
   /// is no implicit "unlimited" mode. Audit: CITRATE_SDK_MARKETPLACE-...-002.
   maxPayWei: bigint;
+  /// REQUIRED: cumulative hard cap on total auto-pay over this client's
+  /// lifetime. Each surrendered authorization (whether or not the server then
+  /// serves) is charged against this budget; once it is exhausted the client
+  /// refuses to sign further challenges and returns the 402 unsigned. Without
+  /// it a per-challenge `maxPayWei` bounds one request but an agent loop of N
+  /// requests authorises up to N × maxPayWei — the settle-vs-serve extraction.
+  /// There is no implicit "unlimited" mode. Audit: SMK-B-003.
+  maxTotalWei: bigint;
   /// REQUIRED: the chain id the client will sign payments for. A challenge for
   /// any other chain is rejected (no cross-chain redirection of a signed auth).
   chainId: number;
@@ -409,11 +417,27 @@ export interface X402ClientOptions {
   /// any other token is rejected (the server cannot redirect payment to an
   /// attacker-chosen token). Compared case-insensitively.
   allowedTokens: Address[];
-  /// Optional: if set, the challenge recipient must be one of these (pin the
-  /// payee). Compared case-insensitively.
-  allowedRecipients?: Address[];
+  /// REQUIRED: the challenge recipient (payee) must be one of these — pin the
+  /// payee. A challenge naming any other recipient is rejected. This is NOT
+  /// optional: leaving the payee unpinned lets a compromised gateway name an
+  /// attacker-controlled recipient while every other policy check passes.
+  /// Compared case-insensitively. Audit: SMK-B-002.
+  allowedRecipients: Address[];
   /// Optional: drop in a custom fetch (for tests). Defaults to global.
   fetch?: typeof fetch;
+}
+
+/// A record of one payment authorization the client surrendered, so the
+/// integrator can enumerate what was signed and detect payments that were
+/// never served (`served === false`). Audit: SMK-B-003.
+export interface X402PaymentRecord {
+  to: Address;
+  value: bigint;
+  nonce: Hex;
+  /// Whether the paid retry returned a 2xx. `false` means the client parted
+  /// with a signed authorization and the server did not serve — the caller
+  /// paid without proof of service.
+  served: boolean;
 }
 
 /// Case-insensitive EVM address equality.
@@ -440,7 +464,9 @@ function isHexAddress(v: unknown): v is Address {
 ///   signer,
 ///   chainId: 40204,
 ///   allowedTokens: ['0x…wSALT'],
-///   maxPayWei: 1_000_000_000_000_000_000n, // 1 token, hard cap
+///   allowedRecipients: ['0x…gatewayPayee'], // pin the payee (required)
+///   maxPayWei: 1_000_000_000_000_000_000n,  // 1 token, per-challenge cap
+///   maxTotalWei: 10_000_000_000_000_000_000n, // 10 tokens, lifetime cap
 /// });
 /// const resp = await client.send('http://gateway/v1/chat/completions', {
 ///   method: 'POST',
@@ -450,6 +476,12 @@ function isHexAddress(v: unknown): v is Address {
 export class X402Client {
   private readonly opts: X402ClientOptions;
   private readonly fetchImpl: typeof fetch;
+  /// Cumulative wei surrendered across this client's lifetime. Charged at
+  /// the moment an authorization is signed (the server can settle it whether
+  /// or not it serves), and checked against `maxTotalWei` before the next
+  /// signature. Audit: SMK-B-003.
+  private spentWei = 0n;
+  private readonly ledger: X402PaymentRecord[] = [];
 
   constructor(opts: X402ClientOptions) {
     // Fail CLOSED: the spend policy must hold at runtime, not just in the
@@ -461,6 +493,15 @@ export class X402Client {
     if (typeof opts.maxPayWei !== 'bigint' || opts.maxPayWei < 0n) {
       throw new Error(
         'X402Client: maxPayWei is required and must be a non-negative bigint — omitting it is not an unlimited mode',
+      );
+    }
+    // Fail CLOSED on the cumulative budget too: without a lifetime cap a
+    // per-challenge maxPayWei bounds one request but not an agent loop, which
+    // can surrender N × maxPayWei to a server that never serves. There is no
+    // implicit "unlimited" mode. Audit: SMK-B-003.
+    if (typeof opts.maxTotalWei !== 'bigint' || opts.maxTotalWei < 0n) {
+      throw new Error(
+        'X402Client: maxTotalWei is required and must be a non-negative bigint — omitting it is not an unlimited mode',
       );
     }
     if (
@@ -479,18 +520,36 @@ export class X402Client {
         'X402Client: allowedTokens is required and must be a non-empty array of 0x-prefixed 20-byte hex addresses',
       );
     }
+    // Fail CLOSED on the payee: `allowedRecipients` is REQUIRED. Leaving it
+    // unpinned would let a compromised gateway name an attacker-controlled
+    // recipient while chain/token/cap all pass — the exact break the header
+    // comment in `send` claims cannot happen. Audit: SMK-B-002.
     if (
-      opts.allowedRecipients !== undefined &&
-      (!Array.isArray(opts.allowedRecipients) ||
-        opts.allowedRecipients.length === 0 ||
-        !opts.allowedRecipients.every(isHexAddress))
+      !Array.isArray(opts.allowedRecipients) ||
+      opts.allowedRecipients.length === 0 ||
+      !opts.allowedRecipients.every(isHexAddress)
     ) {
       throw new Error(
-        'X402Client: allowedRecipients, when provided, must be a non-empty array of 0x-prefixed 20-byte hex addresses',
+        'X402Client: allowedRecipients is required and must be a non-empty array of 0x-prefixed 20-byte hex addresses — the payee must be pinned',
       );
     }
     this.opts = opts;
     this.fetchImpl = opts.fetch ?? fetch;
+  }
+
+  /// Total wei this client has surrendered in signed authorizations over its
+  /// lifetime (charged at signing time, independent of whether the server
+  /// served). Audit: SMK-B-003.
+  get totalSpentWei(): bigint {
+    return this.spentWei;
+  }
+
+  /// A copy of every payment authorization this client surrendered, in order,
+  /// each flagged `served` (the paid retry returned 2xx) or not. Lets the
+  /// integrator enumerate what was signed and see what was paid-but-not-served.
+  /// Audit: SMK-B-003.
+  get payments(): X402PaymentRecord[] {
+    return this.ledger.map((p) => ({ ...p }));
   }
 
   /// Send a request; if it returns 402 with a parseable challenge,
@@ -518,13 +577,18 @@ export class X402Client {
     if (!this.opts.allowedTokens.some((t) => addrEq(t, challenge.token))) {
       return first;
     }
-    if (
-      this.opts.allowedRecipients !== undefined &&
-      !this.opts.allowedRecipients.some((r) => addrEq(r, challenge.recipient))
-    ) {
+    // Payee is pinned unconditionally now (allowedRecipients is required).
+    if (!this.opts.allowedRecipients.some((r) => addrEq(r, challenge.recipient))) {
       return first;
     }
-    if (BigInt(challenge.amount) > this.opts.maxPayWei) return first;
+    const amount = BigInt(challenge.amount);
+    if (amount > this.opts.maxPayWei) return first;
+    // Cumulative lifetime cap: a signed authorization CAN be settled by the
+    // server whether or not it then serves, so it must count against the
+    // budget at signing time. Once the budget cannot cover this challenge the
+    // client refuses — bounding the settle-vs-serve extraction of an unattended
+    // agent loop. Audit: SMK-B-003.
+    if (this.spentWei + amount > this.opts.maxTotalWei) return first;
     // Never sign an already-expired authorization window — the window's
     // internal coherence (after < before, integer bounds) is validated in
     // extractChallenge. Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-003.
@@ -533,9 +597,26 @@ export class X402Client {
     const payload = await signChallenge(challenge, this.opts.signer);
     const headerVal = encodePaymentHeader(payload);
 
+    // Charge the budget the moment we hand over the authorization — the server
+    // holds a settleable claim from here on, regardless of its response. Record
+    // it so the caller can enumerate what was signed. Audit: SMK-B-003.
+    this.spentWei += amount;
+    const record: X402PaymentRecord = {
+      to: challenge.recipient,
+      value: amount,
+      nonce: challenge.nonce,
+      served: false,
+    };
+    this.ledger.push(record);
+
     const headers = new Headers(init?.headers);
     headers.set('x-payment', headerVal);
-    return this.fetchImpl(input, { ...init, headers });
+    const paid = await this.fetchImpl(input, { ...init, headers });
+    // Proof-of-service: a non-2xx after payment means we surrendered a signed
+    // authorization and were not served. Surface it on the ledger so the
+    // caller learns it paid without proof of service. Audit: SMK-B-003.
+    record.served = paid.ok;
+    return paid;
   }
 }
 
