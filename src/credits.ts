@@ -22,6 +22,7 @@ import {
 
 import { bulkComputeGatewayAbi } from './abi/bulk-compute-gateway.js';
 import { erc20Abi } from './abi/erc20.js';
+import { isHexAddress } from './x402.js';
 
 // ── Calldata builders ───────────────────────────────────────────
 
@@ -97,11 +98,30 @@ export type CreditsEvent =
 const KNOWN_CREDITS_EVENTS = new Set(['CreditsPurchased', 'CreditsSpent']);
 
 /// Decode CreditsPurchased + CreditsSpent logs from a tx receipt or
-/// eth_getLogs. Unknown logs are skipped silently so callers can
-/// pass mixed-ABI receipts through without pre-filtering.
-export function parseCreditsEvents(logs: readonly Log[]): CreditsEvent[] {
+/// eth_getLogs. Unknown logs are skipped silently so callers can pass
+/// mixed-ABI receipts through without pre-filtering.
+///
+/// `expectedEmitter` (the BulkComputeGateway address) is REQUIRED and every
+/// log whose `log.address` does not match it is dropped — decoding by ABI
+/// signature alone accepts a correctly-shaped `CreditsPurchased` emitted by
+/// ANY contract, letting an attacker forge purchase history. Compared
+/// case-insensitively. Audit: SMK-B-006.
+export function parseCreditsEvents(
+  logs: readonly Log[],
+  expectedEmitter: Address,
+): CreditsEvent[] {
+  if (!isHexAddress(expectedEmitter)) {
+    throw new Error(
+      'parseCreditsEvents: expectedEmitter must be a 0x-prefixed 20-byte hex address (the emitting gateway)',
+    );
+  }
+  const emitter = expectedEmitter.toLowerCase();
   const out: CreditsEvent[] = [];
   for (const log of logs) {
+    // Reject any log not emitted by the pinned gateway before decoding.
+    if (typeof log.address !== 'string' || log.address.toLowerCase() !== emitter) {
+      continue;
+    }
     let decoded;
     try {
       decoded = decodeEventLog({

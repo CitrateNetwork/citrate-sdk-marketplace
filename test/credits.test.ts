@@ -134,7 +134,7 @@ describe('parseCreditsEvents', () => {
 
   test('decodes CreditsPurchased', () => {
     const log = creditsPurchasedLog(INSTITUTION, USDC, 100_000_000n, 769_230_769_230_769_230n, 7n);
-    const events = parseCreditsEvents([log]);
+    const events = parseCreditsEvents([log], GATEWAY);
     expect(events).toHaveLength(1);
     expect(events[0].kind).toBe('CreditsPurchased');
     if (events[0].kind === 'CreditsPurchased') {
@@ -149,7 +149,7 @@ describe('parseCreditsEvents', () => {
 
   test('decodes CreditsSpent', () => {
     const log = creditsSpentLog(INSTITUTION, SPENDER, 1_000_000_000_000_000_000n);
-    const events = parseCreditsEvents([log]);
+    const events = parseCreditsEvents([log], GATEWAY);
     expect(events).toHaveLength(1);
     expect(events[0].kind).toBe('CreditsSpent');
     if (events[0].kind === 'CreditsSpent') {
@@ -171,13 +171,13 @@ describe('parseCreditsEvents', () => {
       transactionIndex: 0,
       topics: [('0x' + 'ff'.repeat(32)) as Hex],
     } as Log;
-    expect(parseCreditsEvents([noise])).toEqual([]);
+    expect(parseCreditsEvents([noise], GATEWAY)).toEqual([]);
   });
 
   test('processes mixed logs preserving order', () => {
     const a = creditsPurchasedLog(INSTITUTION, USDC, 10_000_000n, 1n, 0n);
     const b = creditsSpentLog(INSTITUTION, SPENDER, 5n);
-    const out = parseCreditsEvents([a, b]);
+    const out = parseCreditsEvents([a, b], GATEWAY);
     expect(out.map((e) => e.kind)).toEqual(['CreditsPurchased', 'CreditsSpent']);
   });
 });
