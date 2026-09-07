@@ -195,6 +195,9 @@ describe('X402Client.send', () => {
   const account = privateKeyToAccount(TEST_PRIVATE_KEY);
   // Client policy matching the test challenge() below (RM-C mandatory binding).
   const TOKEN = '0x8951ae72e5479cae28ef7bb3caa4207d5719e24b' as Address;
+  // The payee the challenge() fixture below names — pinned in-policy now that
+  // allowedRecipients is required (SMK-B-002).
+  const RECIPIENT = ('0x' + 'a2'.repeat(20)) as Address;
   const MAX = 10_000_000_000_000_000_000_000n;
 
   function challenge(amount = '1000000000000000000'): PaymentChallenge {
@@ -231,7 +234,9 @@ describe('X402Client.send', () => {
       fetch: fetchMock,
       chainId: 40204,
       allowedTokens: [TOKEN],
+      allowedRecipients: [RECIPIENT],
       maxPayWei: MAX,
+      maxTotalWei: MAX,
     });
     const resp = await client.send('http://gw/v1/chat/completions');
     expect(resp.status).toBe(200);
@@ -252,7 +257,9 @@ describe('X402Client.send', () => {
       fetch: fetchMock,
       chainId: 40204,
       allowedTokens: [TOKEN],
+      allowedRecipients: [RECIPIENT],
       maxPayWei: MAX,
+      maxTotalWei: MAX,
     });
     const resp = await client.send('http://gw/v1/chat/completions', {
       method: 'POST',
@@ -274,7 +281,9 @@ describe('X402Client.send', () => {
       fetch: fetchMock,
       chainId: 40204,
       allowedTokens: [TOKEN],
+      allowedRecipients: [RECIPIENT],
       maxPayWei: 1n,
+      maxTotalWei: MAX,
     });
     const resp = await client.send('http://gw/v1/chat/completions');
     expect(resp.status).toBe(402);
@@ -290,7 +299,9 @@ describe('X402Client.send', () => {
       fetch: fetchMock,
       chainId: 40204,
       allowedTokens: [TOKEN],
+      allowedRecipients: [RECIPIENT],
       maxPayWei: MAX,
+      maxTotalWei: MAX,
     });
     const resp = await client.send('http://gw/v1/chat/completions');
     expect(resp.status).toBe(402);
@@ -306,7 +317,9 @@ describe('X402Client.send', () => {
       fetch: fetchMock,
       chainId: 40204,
       allowedTokens: [TOKEN],
+      allowedRecipients: [RECIPIENT],
       maxPayWei: MAX,
+      maxTotalWei: MAX,
     });
     const resp = await client.send('http://gw/v1/chat/completions');
     expect(resp.status).toBe(503);
@@ -322,7 +335,8 @@ describe('X402Client.send', () => {
       jsonResponse({ x402: { ...challenge(), chain_id: 99999 } }, 402),
     );
     const client = new X402Client({
-      signer: account, fetch: fetchMock, chainId: 40204, allowedTokens: [TOKEN], maxPayWei: MAX,
+      signer: account, fetch: fetchMock, chainId: 40204, allowedTokens: [TOKEN],
+      allowedRecipients: [RECIPIENT], maxPayWei: MAX, maxTotalWei: MAX,
     });
     const resp = await client.send('http://gw/v1/chat/completions');
     expect(resp.status).toBe(402);
@@ -335,7 +349,8 @@ describe('X402Client.send', () => {
       jsonResponse({ x402: { ...challenge(), token: evilToken } }, 402),
     );
     const client = new X402Client({
-      signer: account, fetch: fetchMock, chainId: 40204, allowedTokens: [TOKEN], maxPayWei: MAX,
+      signer: account, fetch: fetchMock, chainId: 40204, allowedTokens: [TOKEN],
+      allowedRecipients: [RECIPIENT], maxPayWei: MAX, maxTotalWei: MAX,
     });
     const resp = await client.send('http://gw/v1/chat/completions');
     expect(resp.status).toBe(402);
@@ -346,6 +361,7 @@ describe('X402Client.send', () => {
     const fetchMock = vi.fn(async () => jsonResponse({ x402: challenge() }, 402));
     const client = new X402Client({
       signer: account, fetch: fetchMock, chainId: 40204, allowedTokens: [TOKEN], maxPayWei: MAX,
+      maxTotalWei: MAX,
       allowedRecipients: [('0x' + 'c3'.repeat(20)) as Address],
     });
     const resp = await client.send('http://gw/v1/chat/completions');
