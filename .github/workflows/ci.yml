@@ -11,6 +11,27 @@ jobs:
   js:
     uses: CitrateNetwork/.github/.github/workflows/reusable-js-ci.yml@main
 
+  # SMK-B-009 + SMK-B-010: publish-integrity gates the reusable JS CI does not
+  # cover. `check-npmrc` rejects a second registry host or a publish credential
+  # shared across hosts (the dependency-confusion arming). The production audit
+  # is BLOCKING at high; the full-tree audit is advisory (dev-only advisories
+  # should surface without failing the build).
+  supply-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: .npmrc publish-integrity gate (blocking)
+        run: node scripts/check-npmrc.mjs
+      - name: Install dependencies
+        run: npm ci
+      - name: Production dependency audit (blocking, high+)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Full dependency audit (advisory)
+        run: npm audit || true
+
   # CL-C2 / SW-179: fail the build if the vendored addresses.json drifts from the
   # canonical citrate-chain 40204.json. The reusable JS CI only runs
   # lint/build/test, so vendored-address drift shipped silently. Requires a
