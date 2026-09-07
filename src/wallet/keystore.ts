@@ -16,6 +16,20 @@
 
 import { bytesToHex, hexToBytes, type Hex } from 'viem';
 
+/// Accepted PBKDF2 iteration-count (`c`) bounds for a v3 keystore.
+///
+/// Lower bound: reject a silently-weak envelope — `encryptKeystore` always
+/// writes 262144, but without a floor a keystore exported by a hostile or
+/// broken tool with `c: 1` would load with no signal that the key is protected
+/// by a single iteration. Audit: SMK-B-008.
+///
+/// Upper bound: reject an attacker-controlled work multiplier — `c` comes from
+/// untrusted JSON (localStorage / an imported file) and is fed straight into a
+/// synchronous PBKDF2 on the unlock path, so `c: 50_000_000` blocks the thread
+/// for ~a minute (DoS). Audit: SMK-B-007.
+export const MIN_PBKDF2_ITERATIONS = 10_000;
+export const MAX_PBKDF2_ITERATIONS = 10_000_000;
+
 /// One Web3 Secret Storage v3 keystore JSON document.
 export interface Keystore {
   /// SCS-3 envelope version. Always 3 in this codec.
@@ -73,6 +87,9 @@ export async function encryptKeystore(
 
   const macInput = concatBytes(derivedKey.slice(16, 32), ciphertext);
   const mac = await keccak256(macInput);
+  // Wipe the derived KEK once the AES key is imported and the MAC computed.
+  // Audit: SMK-B-012.
+  derivedKey.fill(0);
 
   return {
     version: 3,
@@ -109,6 +126,20 @@ export async function decryptKeystore(
     throw new Error(`unsupported prf: ${ks.crypto.kdfparams.prf}`);
   if (ks.crypto.kdfparams.dklen !== 32)
     throw new Error(`unsupported dklen: ${ks.crypto.kdfparams.dklen}`);
+  // Bound the attacker-controlled iteration count BEFORE any PBKDF2 work: too
+  // high is an unbounded-CPU DoS (SMK-B-007), too low is a silently-weak
+  // envelope (SMK-B-008). Both are rejected up front with no derivation done.
+  const c = ks.crypto.kdfparams.c;
+  if (
+    typeof c !== 'number' ||
+    !Number.isInteger(c) ||
+    c < MIN_PBKDF2_ITERATIONS ||
+    c > MAX_PBKDF2_ITERATIONS
+  ) {
+    throw new Error(
+      `keystore pbkdf2 iteration count out of range: ${c} (must be ${MIN_PBKDF2_ITERATIONS}..${MAX_PBKDF2_ITERATIONS})`,
+    );
+  }
 
   const subtle = await getSubtle();
   const salt = plainHexToBytes(ks.crypto.kdfparams.salt);
@@ -152,6 +183,10 @@ export async function decryptKeystore(
       ciphertext as BufferSource,
     ),
   );
+  // Wipe the derived KEK now that the AES key is imported and decryption is
+  // done — it must not outlive this call on the heap. The returned `plaintext`
+  // is the caller's to wipe once consumed (see unlockWallet). Audit: SMK-B-012.
+  derivedKey.fill(0);
   return plaintext;
 }
 

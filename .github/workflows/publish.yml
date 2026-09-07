@@ -36,6 +36,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # SMK-B-009: refuse to release if .npmrc names a second registry host or
+      # shares a publish credential across hosts. Publishing with
+      # --ignore-scripts skips prepublishOnly, so this gate lives in the
+      # workflow, not a package.json script.
+      - name: .npmrc publish-integrity gate
+        run: node scripts/check-npmrc.mjs
+
+      # SMK-B-010: no HIGH+ advisory in the shipped (production) dependency tree.
+      - name: Production dependency audit (blocking, high+)
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Build
         run: npm run build
 

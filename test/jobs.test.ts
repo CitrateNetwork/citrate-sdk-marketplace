@@ -14,6 +14,9 @@ import { encodeAbiParameters } from 'viem';
 
 const MODEL_HASH = ('0x' + 'ab'.repeat(32)) as Hex;
 const ONE_SALT = 10n ** 18n;
+// The ComputeMarketplace address the fixture logs are emitted from. SMK-B-006:
+// parseJobEvents drops any log whose emitter differs.
+const JOBS_EMITTER = '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef' as `0x${string}`;
 
 describe('postJobCalldata', () => {
   test('hashes raw input bytes with keccak256', () => {
@@ -170,7 +173,7 @@ describe('parseJobEvents', () => {
       '0x' + 'a1'.repeat(20) as Hex,
       MODEL_HASH,
     );
-    const events = parseJobEvents([log]);
+    const events = parseJobEvents([log], JOBS_EMITTER);
     expect(events).toHaveLength(1);
     expect(events[0].kind).toBe('JobPosted');
     if (events[0].kind === 'JobPosted') {
@@ -193,7 +196,7 @@ describe('parseJobEvents', () => {
       transactionIndex: 0,
       topics: [('0x' + 'ff'.repeat(32)) as Hex],
     } as Log;
-    expect(parseJobEvents([noiseLog])).toEqual([]);
+    expect(parseJobEvents([noiseLog], JOBS_EMITTER)).toEqual([]);
   });
 
   // Make TS happy when `computeMarketplaceAbi` is unused at runtime.

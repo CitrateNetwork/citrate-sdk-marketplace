@@ -20,7 +20,7 @@ import {
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
-import type { TxSigner } from '../x402.js';
+import type { Eip712TypedData, TxSigner } from '../x402.js';
 import {
   decryptKeystore,
   encryptKeystore,
@@ -98,6 +98,27 @@ export class CitrateWallet implements TxSigner {
     return this.account.sign({ hash: args.hash });
   }
 
+  /// Sign EIP-712 *typed data* (eth_signTypedData_v4 semantics), returning a
+  /// 65-byte hex signature. Implementing this means `signChallenge` routes
+  /// payment authorizations through the typed-data path for this wallet too, so
+  /// the SDK's own wallet is not an unconditional "sign any 32 bytes" oracle:
+  /// the structure being authorized is committed to explicitly rather than an
+  /// opaque digest. Audit: SMK-B-011.
+  async signEip712(typedData: Eip712TypedData): Promise<Hex> {
+    if (!this.account) {
+      throw new Error('CitrateWallet: locked; call unlock() first');
+    }
+    // viem derives the EIP712Domain type from `domain`; passing it in `types`
+    // as well is rejected, so strip it before delegating.
+    const { EIP712Domain: _omitDomain, ...types } = typedData.types;
+    return this.account.signTypedData({
+      domain: typedData.domain,
+      types,
+      primaryType: typedData.primaryType,
+      message: typedData.message,
+    });
+  }
+
   /// Build, sign, and broadcast an EIP-155 tx. Returns the tx
   /// hash from `eth_sendRawTransaction`. Caller polls for the
   /// receipt separately (or uses
@@ -152,6 +173,11 @@ export async function createWallet(passphrase: string): Promise<CitrateWallet> {
   }
   const wallet = new CitrateWallet(privateKey);
   const ks = await encryptKeystore(privateKey, passphrase, wallet.address);
+  // Wipe the plaintext key once it has been copied into the wallet and the
+  // encrypted keystore. Note the viem account holds an immutable hex-string
+  // copy that cannot be wiped, so `lock()` remains a reference drop, not an
+  // erasure — but this array must not linger. Audit: SMK-B-012.
+  privateKey.fill(0);
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ks));
   }
@@ -166,7 +192,22 @@ export async function unlockWallet(passphrase: string): Promise<CitrateWallet> {
   if (!raw) throw new Error('CitrateWallet: no keystore in storage');
   const ks = JSON.parse(raw) as Keystore;
   const privateKey = await decryptKeystore(ks, passphrase);
-  return new CitrateWallet(privateKey);
+  const wallet = new CitrateWallet(privateKey);
+  // Wipe the decrypted key now it is copied into the wallet. Audit: SMK-B-012.
+  privateKey.fill(0);
+  // Bind the displayed identity to the signing identity: `peekKeystoreAddress`
+  // shows the self-declared `ks.address` before unlock, but the wallet signs
+  // with whatever key actually decrypts. If an attacker who can write
+  // localStorage swaps in their own keystore carrying the victim's address
+  // string, the two disagree — refuse rather than sign as a key the user did
+  // not mean to use. Audit: SMK-B-008.
+  const declared = ('0x' + ks.address.toLowerCase().replace(/^0x/, '')) as Address;
+  if (wallet.address.toLowerCase() !== declared.toLowerCase()) {
+    throw new Error(
+      'CitrateWallet: keystore address does not match the address derived from the decrypted key',
+    );
+  }
+  return wallet;
 }
 
 /// Read the keystore's address WITHOUT decrypting. Lets the UI

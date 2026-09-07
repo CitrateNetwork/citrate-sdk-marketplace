@@ -29,6 +29,9 @@ const DATASET_HASH = ('0x' + 'bb'.repeat(32)) as Hex;
 const COORDINATOR = ('0x' + 'c1'.repeat(20)) as `0x${string}`;
 const TARGET = ('0x' + 'c2'.repeat(20)) as `0x${string}`;
 const ONE_SALT = 10n ** 18n;
+// The ComputePoolTraining address the fixture logs are emitted from. SMK-B-006:
+// parseTrainingEvents drops any log whose emitter differs.
+const TRAINING_EMITTER = '0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef' as `0x${string}`;
 
 function spec(): TrainingJobSpec {
   return {
@@ -211,7 +214,7 @@ describe('parseTrainingEvents', () => {
   test('decodes EpochCommitted', () => {
     const root = ('0x' + 'ab'.repeat(32)) as Hex;
     const log = epochCommittedLog(42n, 1, root);
-    const events = parseTrainingEvents([log]);
+    const events = parseTrainingEvents([log], TRAINING_EMITTER);
     expect(events).toHaveLength(1);
     expect(events[0].kind).toBe('EpochCommitted');
     if (events[0].kind === 'EpochCommitted') {
@@ -233,6 +236,6 @@ describe('parseTrainingEvents', () => {
       transactionIndex: 0,
       topics: [('0x' + 'ff'.repeat(32)) as Hex],
     } as Log;
-    expect(parseTrainingEvents([noise])).toEqual([]);
+    expect(parseTrainingEvents([noise], TRAINING_EMITTER)).toEqual([]);
   });
 });
