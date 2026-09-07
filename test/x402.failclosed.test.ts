@@ -29,6 +29,8 @@ const TEST_PRIVATE_KEY: Hex =
 
 const account = privateKeyToAccount(TEST_PRIVATE_KEY);
 const TOKEN = '0x8951ae72e5479cae28ef7bb3caa4207d5719e24b' as Address;
+// The payee the challenge() fixture names — pinned in-policy (SMK-B-002).
+const RECIPIENT = ('0x' + 'a2'.repeat(20)) as Address;
 const MAX = 10_000_000_000_000_000_000_000n;
 
 function validOpts(): X402ClientOptions {
@@ -36,7 +38,9 @@ function validOpts(): X402ClientOptions {
     signer: account,
     chainId: 40204,
     allowedTokens: [TOKEN],
+    allowedRecipients: [RECIPIENT],
     maxPayWei: MAX,
+    maxTotalWei: MAX,
   };
 }
 
