@@ -423,9 +423,23 @@ export interface X402ClientOptions {
   /// attacker-controlled recipient while every other policy check passes.
   /// Compared case-insensitively. Audit: SMK-B-002.
   allowedRecipients: Address[];
+  /// Optional: the maximum settlement horizon, in seconds, the client will
+  /// sign for. A challenge whose `valid_before` lies more than this far in the
+  /// future is refused, so a gateway cannot obtain an authorization that stays
+  /// settleable long after (or opens long after) the request that produced it —
+  /// the `valid_before: 9_007_199_254_740_991` (~285-million-year) case, and the
+  /// far-future `valid_after` case, both fall outside the horizon. Defaults to
+  /// `DEFAULT_MAX_VALIDITY_WINDOW_SEC` (300s). Audit: SMK-B-004.
+  maxValidityWindowSec?: number;
   /// Optional: drop in a custom fetch (for tests). Defaults to global.
   fetch?: typeof fetch;
 }
+
+/// Default settlement horizon for `maxValidityWindowSec` — a signed payment
+/// authorization may be settleable at most this many seconds into the future.
+/// Honest gateways issue short-lived (minutes) windows; this bounds the
+/// pathological unbounded window. Audit: SMK-B-004.
+export const DEFAULT_MAX_VALIDITY_WINDOW_SEC = 300;
 
 /// A record of one payment authorization the client surrendered, so the
 /// integrator can enumerate what was signed and detect payments that were
@@ -452,7 +466,7 @@ const HEX_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const HEX_BYTES32_RE = /^0x[0-9a-fA-F]{64}$/;
 const DECIMAL_STRING_RE = /^[0-9]+$/;
 
-function isHexAddress(v: unknown): v is Address {
+export function isHexAddress(v: unknown): v is Address {
   return typeof v === 'string' && HEX_ADDRESS_RE.test(v);
 }
 
@@ -533,6 +547,19 @@ export class X402Client {
         'X402Client: allowedRecipients is required and must be a non-empty array of 0x-prefixed 20-byte hex addresses — the payee must be pinned',
       );
     }
+    // Fail CLOSED on the validity horizon: if provided it must be a positive
+    // integer. An absent field takes the finite DEFAULT_MAX_VALIDITY_WINDOW_SEC,
+    // never an unbounded window. Audit: SMK-B-004.
+    if (
+      opts.maxValidityWindowSec !== undefined &&
+      (typeof opts.maxValidityWindowSec !== 'number' ||
+        !Number.isInteger(opts.maxValidityWindowSec) ||
+        opts.maxValidityWindowSec <= 0)
+    ) {
+      throw new Error(
+        'X402Client: maxValidityWindowSec, when set, must be a positive integer number of seconds',
+      );
+    }
     this.opts = opts;
     this.fetchImpl = opts.fetch ?? fetch;
   }
@@ -592,7 +619,16 @@ export class X402Client {
     // Never sign an already-expired authorization window — the window's
     // internal coherence (after < before, integer bounds) is validated in
     // extractChallenge. Audit: CITRATE_SDK_MARKETPLACE-2026-05-31-003.
-    if (challenge.valid_before <= Math.floor(Date.now() / 1000)) return first;
+    const now = Math.floor(Date.now() / 1000);
+    if (challenge.valid_before <= now) return first;
+    // Bound the settlement horizon: refuse an authorization that stays (or
+    // becomes) settleable more than `maxValidityWindowSec` into the future.
+    // This rejects both the unbounded `valid_before` (~285-million-year) case
+    // and the far-future-opening `valid_after` case, since `valid_before` is
+    // always the later of the two. Audit: SMK-B-004.
+    const maxWindow =
+      this.opts.maxValidityWindowSec ?? DEFAULT_MAX_VALIDITY_WINDOW_SEC;
+    if (challenge.valid_before - now > maxWindow) return first;
 
     const payload = await signChallenge(challenge, this.opts.signer);
     const headerVal = encodePaymentHeader(payload);
@@ -611,7 +647,19 @@ export class X402Client {
 
     const headers = new Headers(init?.headers);
     headers.set('x-payment', headerVal);
-    const paid = await this.fetchImpl(input, { ...init, headers });
+    // `redirect: 'manual'` on the paid retry: the `x-payment` header is a
+    // bearer authorization, and the fetch spec does NOT strip arbitrary headers
+    // across a cross-origin redirect (unlike Authorization/Cookie). Following a
+    // `302 Location: https://attacker.example/` would forward the signed
+    // authorization to a host the client never chose, where anyone can submit it
+    // to `transferWithAuthorization` (that call is permissionless). Refusing to
+    // follow keeps the credential on the origin the caller addressed; an honest
+    // API answers with a 2xx/4xx/5xx, never a redirect. Audit: SMK-B-005.
+    const paid = await this.fetchImpl(input, {
+      ...init,
+      headers,
+      redirect: 'manual',
+    });
     // Proof-of-service: a non-2xx after payment means we surrendered a signed
     // authorization and were not served. Surface it on the ledger so the
     // caller learns it paid without proof of service. Audit: SMK-B-003.

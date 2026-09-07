@@ -14,6 +14,7 @@ import {
 } from 'viem';
 
 import { computePoolTrainingAbi } from './abi/compute-pool-training.js';
+import { isHexAddress } from './x402.js';
 
 // ── Types ───────────────────────────────────────────────────────
 
@@ -246,9 +247,27 @@ const KNOWN = new Set([
 /// Decode a list of logs into typed TrainingEvent values. Unknown
 /// topics are silently skipped, so callers can pass mixed-ABI
 /// receipts through without pre-filtering.
-export function parseTrainingEvents(logs: readonly Log[]): TrainingEvent[] {
+///
+/// `expectedEmitter` (the ComputePoolTraining address) is REQUIRED and every
+/// log whose `log.address` does not match it is dropped — decoding by ABI
+/// signature alone would accept a correctly-shaped training event emitted by
+/// ANY contract, letting an attacker forge job state. Compared
+/// case-insensitively. Audit: SMK-B-006.
+export function parseTrainingEvents(
+  logs: readonly Log[],
+  expectedEmitter: Address,
+): TrainingEvent[] {
+  if (!isHexAddress(expectedEmitter)) {
+    throw new Error(
+      'parseTrainingEvents: expectedEmitter must be a 0x-prefixed 20-byte hex address (the ComputePoolTraining contract)',
+    );
+  }
+  const emitter = expectedEmitter.toLowerCase();
   const out: TrainingEvent[] = [];
   for (const log of logs) {
+    if (typeof log.address !== 'string' || log.address.toLowerCase() !== emitter) {
+      continue;
+    }
     let decoded;
     try {
       decoded = decodeEventLog({
