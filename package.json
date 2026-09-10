@@ -27,7 +27,7 @@
     "ai",
     "ethereum"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "dependencies": {
     "viem": "^2.56.0"
   },
