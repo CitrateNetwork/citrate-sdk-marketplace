@@ -1,4 +1,6 @@
 # citrate-sdk-marketplace
+
+*Part of the **[Citrate Network](https://citrate.ai)** — own the means of computation. · [Docs](https://docs.citrate.ai) · [Run a node](https://citrate.ai/download) · [Contribute → free membership](https://github.com/CitrateNetwork/.github/blob/main/CONTRIBUTING.md)*
 > TypeScript SDK for the Citrate compute marketplace (chain **40204**) — typed contract ABIs, calldata builders, an x402 payment client, and a read-only browsing client built on viem.
 
 ## What it is
