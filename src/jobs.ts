@@ -31,12 +31,13 @@ import {
 export interface PostJobArgs {
   /// Pinned model hash (`0x` + 64 hex chars).
   modelHash: Hex;
-  /// `inputHash` field on-chain. Either:
-  ///   - A `Uint8Array` of arbitrary input bytes (we keccak256 it), or
-  ///   - A `Hex` string already in the form the caller wants stored
-  ///     (e.g. an IPFS CID encoded as bytes).
-  /// See contracts/src/ComputeMarketplace.sol:309 for the on-chain
-  /// docstring.
+  /// Job input, which determines the on-chain `inputHash`. Either:
+  ///   - A `Uint8Array` of the raw input bytes (we keccak256 it), or
+  ///   - A `Hex` that is ALREADY the 32-byte keccak256 of the input.
+  /// Providers (citrate-node-agent, PBA-L6b-021) only bid on jobs whose
+  /// inputHash is the 32-byte keccak256 of the input they are given, so the
+  /// old "pass any bytes, e.g. an IPFS CID" form is refused: such jobs
+  /// would never get a bid. Put a CID in the input itself instead.
   input: Uint8Array | Hex;
   /// Max price the buyer will pay, in grains (wei).
   maxPriceGrains: bigint;
@@ -71,7 +72,7 @@ export function postJobCalldata(args: PostJobArgs): {
   const inputHash =
     args.input instanceof Uint8Array
       ? keccak256(args.input)
-      : asBytesHex(args.input);
+      : asInputDigest(args.input);
 
   const method = args.paymentMethod ?? PaymentMethod.SALT;
   // Route to `postJobWithMethod` only when the caller asked for
@@ -109,9 +110,15 @@ export function postJobCalldata(args: PostJobArgs): {
   return { data, inputHash };
 }
 
-function asBytesHex(h: Hex): Hex {
-  if (!/^0x([0-9a-fA-F]{2})*$/.test(h)) {
-    throw new Error(`expected hex string with even-length body, got: ${h}`);
+/// A Hex `input` must already be the 32-byte keccak256 digest of the job
+/// input (cross-lane PBA-L6b-021: providers decline any other inputHash).
+function asInputDigest(h: Hex): Hex {
+  if (!/^0x[0-9a-fA-F]{64}$/.test(h)) {
+    throw new Error(
+      `postJobCalldata: a Hex input must be the 32-byte keccak256 digest of the job input, got ${h.length > 20 ? h.slice(0, 20) + '…' : h}. ` +
+        'Pass the raw input bytes as a Uint8Array to have it hashed. CID or other-scheme inputHash values are no longer ' +
+        'accepted: providers only bid on jobs whose inputHash is keccak256(input) (PBA-L6b-021).',
+    );
   }
   return h;
 }

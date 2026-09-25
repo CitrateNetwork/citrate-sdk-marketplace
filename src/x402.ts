@@ -630,13 +630,24 @@ export class X402Client {
       this.opts.maxValidityWindowSec ?? DEFAULT_MAX_VALIDITY_WINDOW_SEC;
     if (challenge.valid_before - now > maxWindow) return first;
 
-    const payload = await signChallenge(challenge, this.opts.signer);
-    const headerVal = encodePaymentHeader(payload);
-
-    // Charge the budget the moment we hand over the authorization — the server
-    // holds a settleable claim from here on, regardless of its response. Record
-    // it so the caller can enumerate what was signed. Audit: SMK-B-003.
+    // Reserve the amount NOW, synchronously, before any await (PBA-L3b-002).
+    // Charging after `await signChallenge` let N concurrent sends all pass the
+    // cap check above before any of them charged, so the lifetime cap was
+    // bypassed N-fold. No await sits between the check and this line. The
+    // reservation becomes the charge once the authorization is signed (the
+    // server then holds a settleable claim regardless of its response;
+    // SMK-B-003) and is released only if signing itself fails.
     this.spentWei += amount;
+    let headerVal: string;
+    try {
+      headerVal = encodePaymentHeader(await signChallenge(challenge, this.opts.signer));
+    } catch (e) {
+      this.spentWei -= amount;
+      throw e;
+    }
+
+    // Record the surrendered authorization so the caller can enumerate what
+    // was signed. Audit: SMK-B-003.
     const record: X402PaymentRecord = {
       to: challenge.recipient,
       value: amount,

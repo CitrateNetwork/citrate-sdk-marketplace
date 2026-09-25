@@ -43,11 +43,10 @@ export const computeMarketplaceAbi = [
     ],
   },
   // ── Job posting (Flow B) ──
-  // NOTE: `inputHash` is `bytes` (not bytes32) on-chain. The contract
-  // expects the caller to have already hashed input data and pass
-  // the digest as raw bytes, which lets a CID or alternative-hash
-  // scheme also be carried. The SDK's postJobCalldata() helper
-  // computes keccak256 by default.
+  // NOTE: `inputHash` is `bytes` (not bytes32) on-chain, but providers
+  // (citrate-node-agent, PBA-L6b-021) only bid when it is the 32-byte
+  // keccak256 of the job input. postJobCalldata() computes it from raw
+  // bytes and refuses any other shape (e.g. a CID).
   //
   // Two overloads (CM-06 WP-06.1):
   //   postJob (legacy 6-arg) — defaults to PaymentMethod.SALT
