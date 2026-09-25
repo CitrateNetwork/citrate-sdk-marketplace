@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   js:
-    uses: CitrateNetwork/.github/.github/workflows/reusable-js-ci.yml@main
+    uses: CitrateNetwork/.github/.github/workflows/reusable-js-ci.yml@db5f1a6ddaec28275708265b56762eb1dfc3571b # main
 
   # SMK-B-009 + SMK-B-010: publish-integrity gates the reusable JS CI does not
   # cover. `check-npmrc` rejects a second registry host or a publish credential
@@ -19,8 +19,8 @@ jobs:
   supply-chain:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
       - name: .npmrc publish-integrity gate (blocking)
@@ -51,12 +51,12 @@ jobs:
         run: echo "address-drift is an internal supply-chain gate; skipped without CITRATE_CHAIN_READ_TOKEN."
       - name: Checkout this repo
         if: env.CHAIN_TOKEN != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: citrate-sdk-marketplace
       - name: Checkout canonical citrate-chain (sparse)
         if: env.CHAIN_TOKEN != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: CitrateNetwork/citrate-chain
           ref: main
@@ -64,7 +64,7 @@ jobs:
           path: citrate-chain
           sparse-checkout: |
             contracts/addresses
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: env.CHAIN_TOKEN != ''
         with:
           node-version: 20
