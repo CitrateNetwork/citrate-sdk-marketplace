@@ -85,3 +85,78 @@ describe('PBA-L3b-002: maxTotalWei holds under concurrency', () => {
     expect(c.totalSpentWei).toBe(AMOUNT);
   });
 });
+
+// Mutation hardening for X402Client.send (Stryker survivors in the changed function).
+describe('X402Client.send edges', () => {
+  function challengeBody(over: Record<string, unknown> = {}) {
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      x402: {
+        version: 1, facilitator: '0x' + 'fa'.repeat(20), token: TOKEN, chain_id: 40204,
+        amount: AMOUNT.toString(), nonce: '0x' + '01'.padStart(64, '0'),
+        valid_after: now - 60, valid_before: now + 120, recipient: RECIPIENT,
+        digest: '0x' + '00'.repeat(32), ...over,
+      },
+    };
+  }
+  function fetchSeq(first: Response, paid?: () => Promise<Response>) {
+    const seen: string[] = [];
+    const f = vi.fn(async (_u: RequestInfo | URL, init?: RequestInit) => {
+      const hdr = new Headers(init?.headers).get('x-payment');
+      if (hdr) {
+        seen.push(hdr);
+        return paid ? paid() : new Response('{}', { status: 200 });
+      }
+      return first.clone();
+    });
+    return { f: f as unknown as typeof fetch, seen };
+  }
+  const json402 = (b: unknown) => new Response(JSON.stringify(b), { status: 402, headers: { 'content-type': 'application/json' } });
+
+  test('records exactly what was signed, served=false until the paid retry answers', async () => {
+    const { f } = fetchSeq(json402(challengeBody()), async () => { throw new Error('network down'); });
+    const c = client(f, 2n * AMOUNT);
+    await expect(c.send('http://gw/x')).rejects.toThrow(/network down/);
+    expect(c.payments).toEqual([{ to: RECIPIENT, value: AMOUNT, nonce: '0x' + '01'.padStart(64, '0'), served: false }]);
+  });
+
+  test('a non-402 response is returned untouched even if it carries a challenge', async () => {
+    const { f, seen } = fetchSeq(new Response(JSON.stringify(challengeBody()), { status: 200 }));
+    const r = await client(f, AMOUNT).send('http://gw/x');
+    expect(r.status).toBe(200);
+    expect(seen).toHaveLength(0);
+  });
+
+  test('a 402 with a non-JSON body is returned unsigned', async () => {
+    const { f, seen } = fetchSeq(new Response('<html>pay</html>', { status: 402 }));
+    const r = await client(f, AMOUNT).send('http://gw/x');
+    expect(r.status).toBe(402);
+    expect(seen).toHaveLength(0);
+  });
+
+  test('multi-entry allowlists accept a challenge matching any entry', async () => {
+    const { f, seen } = fetchSeq(json402(challengeBody()));
+    const c = new X402Client({
+      signer: account, chainId: 40204,
+      allowedTokens: [('0x' + 'c3'.repeat(20)) as Address, TOKEN],
+      allowedRecipients: [('0x' + 'd4'.repeat(20)) as Address, RECIPIENT],
+      maxPayWei: AMOUNT, maxTotalWei: AMOUNT, fetch: f,
+    });
+    expect((await c.send('http://gw/x')).status).toBe(200);
+    expect(seen).toHaveLength(1);
+  });
+
+  test('an authorization expiring exactly now is not signed', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-25T00:00:00Z'));
+      const now = Math.floor(Date.now() / 1000);
+      const { f, seen } = fetchSeq(json402(challengeBody({ valid_after: now - 60, valid_before: now })));
+      const r = await client(f, AMOUNT).send('http://gw/x');
+      expect(r.status).toBe(402);
+      expect(seen).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
