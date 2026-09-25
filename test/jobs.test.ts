@@ -51,7 +51,7 @@ describe('postJobCalldata', () => {
   test('selector is the first 4 bytes of keccak256(signature)', () => {
     const { data } = postJobCalldata({
       modelHash: MODEL_HASH,
-      input: '0xab' as Hex,
+      input: new Uint8Array([0xab]),
       maxPriceGrains: 1n,
       tier: TIER.Commitment,
       bidWindowBlocks: 1n,
@@ -70,7 +70,7 @@ describe('postJobCalldata', () => {
   test('paymentMethod=BulkCredits routes to postJobWithMethod selector', () => {
     const { data: saltData } = postJobCalldata({
       modelHash: MODEL_HASH,
-      input: '0xab' as Hex,
+      input: ('0x' + 'ab'.repeat(32)) as Hex, // a 32-byte digest (PBA-L6b-021)
       maxPriceGrains: 1n,
       tier: TIER.Commitment,
       bidWindowBlocks: 1n,
@@ -79,7 +79,7 @@ describe('postJobCalldata', () => {
     });
     const { data: creditsData } = postJobCalldata({
       modelHash: MODEL_HASH,
-      input: '0xab' as Hex,
+      input: ('0x' + 'ab'.repeat(32)) as Hex, // a 32-byte digest (PBA-L6b-021)
       maxPriceGrains: 1n,
       tier: TIER.Commitment,
       bidWindowBlocks: 1n,
@@ -93,7 +93,7 @@ describe('postJobCalldata', () => {
   test('paymentMethod omitted defaults to SALT (postJob selector)', () => {
     const { data: defaulted } = postJobCalldata({
       modelHash: MODEL_HASH,
-      input: '0xab' as Hex,
+      input: ('0x' + 'ab'.repeat(32)) as Hex, // a 32-byte digest (PBA-L6b-021)
       maxPriceGrains: 1n,
       tier: TIER.Commitment,
       bidWindowBlocks: 1n,
@@ -101,7 +101,7 @@ describe('postJobCalldata', () => {
     });
     const { data: explicit } = postJobCalldata({
       modelHash: MODEL_HASH,
-      input: '0xab' as Hex,
+      input: ('0x' + 'ab'.repeat(32)) as Hex, // a 32-byte digest (PBA-L6b-021)
       maxPriceGrains: 1n,
       tier: TIER.Commitment,
       bidWindowBlocks: 1n,
