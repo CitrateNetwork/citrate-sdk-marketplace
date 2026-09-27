@@ -25,7 +25,19 @@
     "marketplace",
     "x402",
     "ai",
-    "ethereum"
+    "ethereum",
+    "sdk",
+    "typescript",
+    "viem",
+    "web3",
+    "gpu",
+    "inference",
+    "training",
+    "compute-marketplace",
+    "decentralized-compute",
+    "chain-40204",
+    "citrate-network",
+    "evm"
   ],
   "license": "Apache-2.0",
   "dependencies": {
@@ -53,5 +65,9 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
+  },
+  "homepage": "https://docs.citrate.ai",
+  "bugs": {
+    "url": "https://github.com/CitrateNetwork/citrate-sdk-marketplace/issues"
   }
 }
