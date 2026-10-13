@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # npm publish --provenance mints a signed provenance statement via GitHub's OIDC token.
+      # Provenance (a signed build statement on npm) needs GitHub's OIDC token.
       id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
