@@ -238,4 +238,27 @@ describe('parseTrainingEvents', () => {
     } as Log;
     expect(parseTrainingEvents([noise], TRAINING_EMITTER)).toEqual([]);
   });
+
+  test('a correctly-shaped EpochCommitted from another contract is dropped', () => {
+    const log = {
+      ...epochCommittedLog(42n, 1, ('0x' + 'ab'.repeat(32)) as Hex),
+      address: ('0x' + '0b'.repeat(20)) as Hex,
+    } as Log;
+    expect(parseTrainingEvents([log], TRAINING_EMITTER)).toEqual([]);
+  });
+
+  test('the emitter pin is compared case-insensitively', () => {
+    const log = epochCommittedLog(9n, 2, ('0x' + 'cd'.repeat(32)) as Hex);
+    const upper = ('0x' + TRAINING_EMITTER.slice(2).toUpperCase()) as `0x${string}`;
+    expect(parseTrainingEvents([log], upper)).toHaveLength(1);
+  });
+
+  test('a missing or malformed expected emitter is rejected', () => {
+    expect(() => parseTrainingEvents([], '0xnope' as `0x${string}`)).toThrow(
+      /expectedEmitter/,
+    );
+    expect(() =>
+      parseTrainingEvents([], undefined as unknown as `0x${string}`),
+    ).toThrow(/expectedEmitter/);
+  });
 });

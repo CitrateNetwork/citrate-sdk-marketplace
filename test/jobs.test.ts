@@ -199,6 +199,27 @@ describe('parseJobEvents', () => {
     expect(parseJobEvents([noiseLog], JOBS_EMITTER)).toEqual([]);
   });
 
+  test('a correctly-shaped JobPosted from another contract is dropped', () => {
+    const log = {
+      ...jobPostedLog(42n, ('0x' + 'a1'.repeat(20)) as Hex, MODEL_HASH),
+      address: ('0x' + '0b'.repeat(20)) as Hex,
+    } as Log;
+    expect(parseJobEvents([log], JOBS_EMITTER)).toEqual([]);
+  });
+
+  test('the emitter pin is compared case-insensitively', () => {
+    const log = jobPostedLog(7n, ('0x' + 'a1'.repeat(20)) as Hex, MODEL_HASH);
+    const upper = ('0x' + JOBS_EMITTER.slice(2).toUpperCase()) as `0x${string}`;
+    expect(parseJobEvents([log], upper)).toHaveLength(1);
+  });
+
+  test('a missing or malformed expected emitter is rejected', () => {
+    expect(() => parseJobEvents([], '0xnope' as `0x${string}`)).toThrow(/expectedEmitter/);
+    expect(() =>
+      parseJobEvents([], undefined as unknown as `0x${string}`),
+    ).toThrow(/expectedEmitter/);
+  });
+
   // Make TS happy when `computeMarketplaceAbi` is unused at runtime.
   test('abi import is reachable', () => {
     expect(computeMarketplaceAbi.length).toBeGreaterThan(0);
