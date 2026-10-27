@@ -10,6 +10,9 @@ import type { Address } from 'viem';
 
 import canonicalAddresses from './generated/addresses.json';
 
+/// Genesis guard (red-phase stub).
+export const EXPECTED_GENESIS_HASH: string = '';
+
 /// Citrate testnet (chain id 40204).
 export const CITRATE_TESTNET_CHAIN_ID = 40204 as const;
 

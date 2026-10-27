@@ -57,6 +57,7 @@ export interface MarketplaceClientOptions {
   publicClient: PublicClient;
   /// Override deployed addresses; falls back to testnet defaults.
   addresses?: MarketplaceAddresses;
+  expectedGenesisHash?: string | null;
 }
 
 export class MarketplaceClient {
