@@ -1,4 +1,4 @@
-// @citrate-ai/marketplace-sdk — public surface.
+// @citratelabs/marketplace-sdk — public surface.
 
 // Re-export viem's Address + Hex so consumers don't need a direct
 // viem dep just for the types we accept.
