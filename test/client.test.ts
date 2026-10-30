@@ -9,7 +9,7 @@ import { describe, expect, test, vi } from 'vitest';
 import type { Address, Hex, PublicClient } from 'viem';
 
 import { MarketplaceClient } from '../src/client.js';
-import { TESTNET_ADDRESSES } from '../src/contracts.js';
+import { EXPECTED_GENESIS_HASH, TESTNET_ADDRESSES } from '../src/contracts.js';
 import { MarketplaceError } from '../src/types.js';
 
 type ReadCall = { address: Address; functionName: string; args?: readonly unknown[] };
@@ -21,8 +21,10 @@ function mockClient(reads: Record<string, unknown> | ((c: ReadCall) => unknown))
     if (typeof reads === 'function') return reads(params);
     return reads[params.functionName];
   });
+  // Block 0 of the network the vendored book is for (the client checks it first).
+  const getBlock = vi.fn(async () => ({ hash: EXPECTED_GENESIS_HASH, number: 0n }));
   return {
-    publicClient: { readContract } as unknown as PublicClient,
+    publicClient: { readContract, getBlock } as unknown as PublicClient,
     calls,
     readContract,
   };

@@ -36,6 +36,7 @@ export {
 
 export {
   CITRATE_TESTNET_CHAIN_ID,
+  EXPECTED_GENESIS_HASH,
   TESTNET_ADDRESSES,
   defaultAddresses,
   type MarketplaceAddresses,

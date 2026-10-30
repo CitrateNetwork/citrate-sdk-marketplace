@@ -57,7 +57,11 @@ It is the official client library for the **Citrate compute marketplace** — th
 - an **`X402Client`** — the payment client for Citrate's HTTP-402 "pay-per-request" flow, matching the Rust inference gateway byte-for-byte;
 - a **wallet module** — encrypted keystore and injected (EIP-1193) signers so browser apps can sign without extra deps.
 
-Deployed contract addresses for chain 40204 are **vendored from the federation-canonical address table**, so they stay in lockstep with the gateway, node-agent, and explorer across a chain re-roll.
+Tokenomics are not yet determined; see [docs.citrate.ai](https://docs.citrate.ai).
+
+Deployed contract addresses for chain 40204 are **vendored from the federation-canonical address table**, so they stay in lockstep with the gateway, node-agent, and explorer across a chain re-roll. This release carries the **r1006** book (`citrate-chain/contracts/addresses/r1006/40204.json`, genesis block `0xa3651a27…6cdd4`).
+
+**Network guard.** Two networks can share chain id 40204 (r1005 and r1006 do), so with the default address book `MarketplaceClient` reads block 0 before its first contract read and throws `MarketplaceError` with code `wrong_network` unless the hash is `EXPECTED_GENESIS_HASH`. Call `market.verifyNetwork()` to check up front. When you pass your own `addresses` no check runs unless you also pass `expectedGenesisHash`; `expectedGenesisHash: null` turns it off.
 
 ## Features
 
@@ -122,7 +126,7 @@ All exports are typed and tree-shakeable. Import only what you use.
 | Export | Purpose |
 |---|---|
 | `MarketplaceClient` | viem-based, read-only-by-default client — `listProviders(modelHash)`, `estimateCost(...)` |
-| `MarketplaceClientOptions` | `{ publicClient, addresses? }` |
+| `MarketplaceClientOptions` | `{ publicClient, addresses?, expectedGenesisHash? }` |
 
 ### Calldata builders & event parsers
 | Group | Exports |
@@ -141,14 +145,14 @@ All exports are typed and tree-shakeable. Import only what you use.
 `inferenceRouterAbi`, `computeMarketplaceAbi`, `computePricingOracleAbi`, `bulkComputeGatewayAbi`, `computePoolTrainingAbi`, `erc20Abi`.
 
 ### Addresses, formatting & types
-`CITRATE_TESTNET_CHAIN_ID` (`40204`), `TESTNET_ADDRESSES`, `defaultAddresses()`, type `MarketplaceAddresses` · `grainsToSalt`, `grainsToSaltDisplay` (SALT base-unit "grains" → display) · `PaymentMethod`, `VerificationTier`, `MarketplaceError`, types `ProviderInfo`, `ProviderProfile`, and re-exported `Address`, `Hex` from viem.
+`CITRATE_TESTNET_CHAIN_ID` (`40204`), `EXPECTED_GENESIS_HASH`, `TESTNET_ADDRESSES`, `defaultAddresses()`, type `MarketplaceAddresses` · `grainsToSalt`, `grainsToSaltDisplay` (SALT base-unit "grains" → display) · `PaymentMethod`, `VerificationTier`, `MarketplaceError`, types `ProviderInfo`, `ProviderProfile`, and re-exported `Address`, `Hex` from viem.
 
 ## Concepts
 
 - **Compute marketplace** — buyers post inference/training jobs; providers are matched, priced by `ComputePricingOracle`, routed by `InferenceRouter`, and settled on `ComputeMarketplace`. Learn more at [docs.citrate.ai](https://docs.citrate.ai).
 - **x402 payments** — Citrate's HTTP-402 pay-per-request scheme. The buyer signs an EIP-712 `transferWithAuthorization` over Wrapped SALT; the gateway verifies and settles. This SDK produces the exact bytes the Rust gateway expects.
 - **Verification tiers** — providers carry a `VerificationTier`; use it to filter for attested/TEE compute.
-- **SALT & grains** — the native token is SALT; `grains` is its integer base unit. `grainsToSalt` / `grainsToSaltDisplay` convert for display.
+- **SALT & grains** — the native token is SALT; `grains` is its integer base unit. `grainsToSalt` / `grainsToSaltDisplay` convert for display. Tokenomics are not yet determined; see [docs.citrate.ai](https://docs.citrate.ai).
 - **Chain 40204** — the Citrate Network testnet. Browse it on the [explorer](https://explorer.citrate.ai); run your own node from [citrate.ai/download](https://citrate.ai/download).
 
 ## Connect it to a local chain
@@ -180,10 +184,11 @@ No environment variables — configuration is code-level:
 | Setting | Default | Purpose |
 |---|---|---|
 | `MarketplaceClient({ publicClient })` | — | a viem `PublicClient` bound to your target chain/RPC |
-| `MarketplaceClient({ addresses })` | `TESTNET_ADDRESSES` (chain 40204) | override deployed contract addresses |
+| `MarketplaceClient({ addresses })` | `TESTNET_ADDRESSES` (chain 40204, r1006 book) | override deployed contract addresses |
+| `MarketplaceClient({ expectedGenesisHash })` | `EXPECTED_GENESIS_HASH` with the default book; none with your own `addresses` | block-0 hash the RPC must report; `null` turns the check off |
 | `CITRATE_TESTNET_CHAIN_ID` | `40204` | exported constant for chain setup |
 
-Vendored addresses refresh with `npm run sync-addresses` (source of truth: `citrate-chain/contracts/addresses/40204.json`); `npm run sync-addresses:check` fails on drift.
+Vendored addresses refresh with `npm run sync-addresses` (sources of truth: `citrate-chain/contracts/addresses/r1006/40204.json` and `R1006_GENESIS` in `core/consensus/src/hardening.rs`; `CITRATE_CHAIN_DIR` points at another checkout); `npm run sync-addresses:check` fails on drift.
 
 ## For AI agents & assistants
 
@@ -206,7 +211,7 @@ _Canonical, machine-readable summary for LLMs, coding agents, and answer engines
 
 **Do I need a wallet to read the marketplace?** No — `MarketplaceClient` is read-only by default. Signing (posting jobs, buying credits, x402 payments) needs a signer/wallet, provided by the SDK's wallet module or your own viem `WalletClient`.
 
-**How do I get the current contract addresses?** They're vendored for chain 40204 (`TESTNET_ADDRESSES` / `defaultAddresses()`), sourced from `citrate-chain/contracts/addresses/40204.json`. Override via `MarketplaceClient({ addresses })`.
+**How do I get the current contract addresses?** They're vendored for chain 40204 (`TESTNET_ADDRESSES` / `defaultAddresses()`), sourced from the r1006 book `citrate-chain/contracts/addresses/r1006/40204.json`. Override via `MarketplaceClient({ addresses })`.
 
 **How does this differ from `@citratelabs/sdk` (citrate-sdk-js)?** [citrate-sdk-js](https://github.com/CitrateNetwork/citrate-sdk-js) is the general-purpose SDK + inference-gateway client; `marketplace-sdk` is focused on the on-chain compute marketplace contracts and x402 settlement.
 

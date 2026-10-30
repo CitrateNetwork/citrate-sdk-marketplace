@@ -42,6 +42,7 @@ import { computePricingOracleAbi } from './abi/compute-pricing-oracle.js';
 import { erc20Abi } from './abi/erc20.js';
 import { inferenceRouterAbi } from './abi/inference-router.js';
 import {
+  EXPECTED_GENESIS_HASH,
   defaultAddresses,
   type MarketplaceAddresses,
 } from './contracts.js';
@@ -57,15 +58,88 @@ export interface MarketplaceClientOptions {
   publicClient: PublicClient;
   /// Override deployed addresses; falls back to testnet defaults.
   addresses?: MarketplaceAddresses;
+  /// Block-0 hash the chain must report before the client reads a contract.
+  /// Defaults to the vendored book's genesis (`EXPECTED_GENESIS_HASH`, r1006)
+  /// when `addresses` is not given, and to no check when it is. `null` skips
+  /// the check (a local dev chain).
+  expectedGenesisHash?: string | null;
 }
+
+const GENESIS_RE = /^0x[0-9a-f]{64}$/;
 
 export class MarketplaceClient {
   readonly publicClient: PublicClient;
   readonly addresses: MarketplaceAddresses;
+  private readonly expectedGenesis: string | null;
+  private networkCheck: Promise<void> | null = null;
 
   constructor(opts: MarketplaceClientOptions) {
     this.publicClient = opts.publicClient;
     this.addresses = opts.addresses ?? defaultAddresses();
+    const given = opts.expectedGenesisHash;
+    if (given === null) {
+      this.expectedGenesis = null;
+    } else if (given === undefined) {
+      this.expectedGenesis = opts.addresses ? null : EXPECTED_GENESIS_HASH;
+    } else {
+      const v = String(given).toLowerCase();
+      if (!GENESIS_RE.test(v)) {
+        throw new MarketplaceError(
+          `expectedGenesisHash must be a 0x-prefixed 32-byte hex hash or null, got ${String(given)}`,
+          'invalid_argument',
+        );
+      }
+      this.expectedGenesis = v;
+    }
+  }
+
+  /**
+   * Check that the chain's block 0 is the expected genesis (see
+   * `expectedGenesisHash`). Runs once per client; a failure is not cached.
+   * Called before every contract read. Throws MarketplaceError
+   * `wrong_network` on another network or when block 0 cannot be read.
+   *
+   * Data source: `eth_getBlockByNumber(0)` via `publicClient.getBlock`.
+   */
+  verifyNetwork(): Promise<void> {
+    const expected = this.expectedGenesis;
+    if (expected === null) return Promise.resolve();
+    if (!this.networkCheck) {
+      this.networkCheck = this.checkGenesis(expected).catch((err: unknown) => {
+        this.networkCheck = null;
+        throw err;
+      });
+    }
+    return this.networkCheck;
+  }
+
+  private async checkGenesis(expected: string): Promise<void> {
+    let hash: string | undefined;
+    try {
+      const block = await this.publicClient.getBlock({ blockNumber: 0n });
+      hash = typeof block?.hash === 'string' ? block.hash.toLowerCase() : undefined;
+    } catch (cause) {
+      throw new MarketplaceError(
+        `cannot read block 0 to verify the network (${(cause as Error)?.message ?? cause}); ` +
+          'refusing to read the vendored address book',
+        'wrong_network',
+        cause,
+      );
+    }
+    if (!hash) {
+      throw new MarketplaceError(
+        'the RPC returned no block 0 hash; refusing to read the vendored address book',
+        'wrong_network',
+      );
+    }
+    if (hash !== expected) {
+      throw new MarketplaceError(
+        `the RPC is on another network: its block 0 is ${hash}, but this SDK's address book is for ` +
+          `genesis ${expected}. Point the PublicClient at a node of that network, or pass ` +
+          'expectedGenesisHash / addresses for yours.',
+        'wrong_network',
+      );
+    }
   }
 
   /**
@@ -90,6 +164,7 @@ export class MarketplaceClient {
    * Rust gateway's `ChainQueries::list_providers`.
    */
   async listProviders(modelHash: Hex): Promise<ProviderInfo[]> {
+    await this.verifyNetwork();
     let addrs: readonly Address[];
     try {
       addrs = (await this.publicClient.readContract({
@@ -138,6 +213,7 @@ export class MarketplaceClient {
     outputTokens: bigint;
     tier: VerificationTierValue;
   }): Promise<bigint> {
+    await this.verifyNetwork();
     try {
       return (await this.publicClient.readContract({
         address: this.addresses.pricingOracle,
@@ -172,6 +248,7 @@ export class MarketplaceClient {
         'invalid_address',
       );
     }
+    await this.verifyNetwork();
     try {
       return (await this.publicClient.readContract({
         address: this.addresses.bulkComputeGateway,
@@ -207,6 +284,7 @@ export class MarketplaceClient {
     if (this.addresses.bulkComputeGateway === '0x0000000000000000000000000000000000000000') {
       return [];
     }
+    await this.verifyNetwork();
     const gateway = this.addresses.bulkComputeGateway;
     // Two separate getLogs calls because the event signatures differ
     // — viem doesn't batch filters for distinct event ABIs. We merge
@@ -282,6 +360,7 @@ export class MarketplaceClient {
     if (this.addresses.bulkComputeGateway === '0x0000000000000000000000000000000000000000') {
       return 10_000_000n;
     }
+    await this.verifyNetwork();
     try {
       return (await this.publicClient.readContract({
         address: this.addresses.bulkComputeGateway,
@@ -304,6 +383,7 @@ export class MarketplaceClient {
         'invalid_address',
       );
     }
+    await this.verifyNetwork();
     try {
       const tuple = (await this.publicClient.readContract({
         address: this.addresses.computeMarketplace,
