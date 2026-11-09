@@ -215,6 +215,8 @@ _Canonical, machine-readable summary for LLMs, coding agents, and answer engines
 
 **How does this differ from `@citratelabs/sdk` (citrate-sdk-js)?** [citrate-sdk-js](https://github.com/CitrateNetwork/citrate-sdk-js) is the general-purpose SDK + inference-gateway client; `marketplace-sdk` is focused on the on-chain compute marketplace contracts and x402 settlement.
 
+**Can this SDK deploy or verify contracts?** No. It binds the marketplace contracts that are already deployed (in r1006 block 0) and builds calldata for them. To deploy your own contract and verify its source on [CitrateScan](https://explorer.citrate.ai), use `deployAndVerify` / `verifyContract` from [`@citratelabs/sdk`](https://www.npmjs.com/package/@citratelabs/sdk) >= 0.4.0, or `deploy_and_verify` / `verify_contract` from [`citrate-labs-sdk`](https://pypi.org/project/citrate-labs-sdk/) >= 0.8.0 on PyPI. CitrateScan's verification API is Etherscan-compatible at `https://explorer.citrate.ai/api`.
+
 **What is x402?** An HTTP-402 "pay-per-request" payment scheme; this SDK signs the EIP-712 authorization the Citrate gateway verifies. See [docs.citrate.ai](https://docs.citrate.ai).
 
 ## Ecosystem
@@ -224,7 +226,7 @@ _Canonical, machine-readable summary for LLMs, coding agents, and answer engines
 - 🔎 **Explorer** — [explorer.citrate.ai](https://explorer.citrate.ai)
 - ⬇️ **Run a node** — [citrate.ai/download](https://citrate.ai/download)
 - ⛓️ **Chain & contracts** — [citrate-chain](https://github.com/CitrateNetwork/citrate-chain)
-- 🧰 **General SDK + gateway client** — [citrate-sdk-js](https://github.com/CitrateNetwork/citrate-sdk-js)
+- 🧰 **General SDK, gateway client, contract deploy + verify** — [`@citratelabs/sdk`](https://www.npmjs.com/package/@citratelabs/sdk) ([citrate-sdk-js](https://github.com/CitrateNetwork/citrate-sdk-js)) · Python: [`citrate-labs-sdk`](https://pypi.org/project/citrate-labs-sdk/) ([citrate-sdk-python](https://github.com/CitrateNetwork/citrate-sdk-python))
 - 🧩 **Built on** — [viem](https://viem.sh)
 
 ## Contributing, security & license

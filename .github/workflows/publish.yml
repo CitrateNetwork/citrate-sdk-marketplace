@@ -1,10 +1,15 @@
 name: Publish to npm
 
-# Manually dispatched after main has been tagged. Requires the
-# NPM_TOKEN repo secret with publish permissions on the
-# @citratelabs org. Without that secret, this workflow fails
-# loudly on the publish step — the build step still verifies that
-# the package is buildable.
+# Runs on a v* tag push (or manual dispatch from the tag).
+#
+# Publishing uses npm TRUSTED PUBLISHING (OIDC), the same path as
+# @citratelabs/sdk (citrate-sdk-js release.yml, PBA-L6-004): no npm token is
+# stored in GitHub. @citratelabs/marketplace-sdk has a Trusted Publisher on
+# npmjs.com bound to CitrateNetwork/citrate-sdk-marketplace + this file
+# (publish.yml); npm issues a short-lived credential for this run only and
+# records signed provenance for the tarball. The v0.2.0 run used the old
+# NPM_TOKEN secret, which npmjs rejected (E404 on the PUT), so 0.2.0 never
+# reached the registry.
 
 on:
   workflow_dispatch:
@@ -29,11 +34,20 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
+      # No registry-url here: that makes setup-node write an _authToken
+      # placeholder into an .npmrc. The repo .npmrc already pins the registry,
+      # and trusted publishing authenticates through OIDC, not a token.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: '22'
+
+      - name: npm new enough for trusted publishing (>= 11.5.1)
+        run: |
+          npm install -g npm@11.6.2
+          npm --version
 
       - name: Install dependencies
         run: npm ci
@@ -69,23 +83,24 @@ jobs:
             exit 1
           fi
 
-      - name: Publish to npm
+      - name: Publish to npm (trusted publishing + provenance)
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           # SMK-B-001: never interpolate the free-text `workflow_dispatch`
           # input into the run: script text — GitHub substitutes ${{ }} BEFORE
           # bash runs, so a value like `latest"; curl … #` would break out of
-          # the string and execute with NODE_AUTH_TOKEN in scope. Pass it
-          # through env: instead, so bash only ever sees it as data, and
-          # validate it against a strict allowlist below.
+          # the string and execute inside the publish job. Pass it through env:
+          # instead, so bash only ever sees it as data, and validate it against
+          # a strict allowlist below.
           DIST_TAG: ${{ github.event.inputs.tag || 'latest' }}
         run: |
-          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
-            echo "::error::NPM_TOKEN secret is not set on this repo. Cannot publish."
-            exit 1
-          fi
           if [[ ! "$DIST_TAG" =~ ^(latest|next|beta|rc)$ ]]; then
             echo "::error::Refusing to publish: dist-tag '$DIST_TAG' is not one of latest|next|beta|rc."
             exit 1
           fi
-          npm publish --access public --tag "$DIST_TAG"
+          NAME=$(node -p "require('./package.json').name")
+          VER=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VER" version >/dev/null 2>&1; then
+            echo "$NAME@$VER already published; skipping."
+          else
+            npm publish --access public --provenance --tag "$DIST_TAG"
+          fi
