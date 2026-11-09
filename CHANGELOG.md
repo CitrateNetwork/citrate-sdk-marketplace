@@ -4,6 +4,36 @@ All notable changes to `@citratelabs/marketplace-sdk` are documented here. This 
 [Semantic Versioning](https://semver.org/); while it is 0.x, a minor release may carry breaking
 changes.
 
+## [0.2.1] - 2026-11-09 — trusted publishing; 0.2.0 never reached npm
+
+No API or address change from 0.2.0. 0.2.0 was tagged on 2026-10-30, but its publish run failed
+(npmjs answered E404 on the PUT: the stored `NPM_TOKEN` no longer had publish rights), so npm
+still serves 0.1.1 with the r1005 book. r1006 is now the network rpc.citrate.ai serves (block 0
+`0xa3651a27…6cdd4`), so 0.2.1 is the release that ships the r1006 book and the network guard.
+
+### Changed
+
+- `.github/workflows/publish.yml` publishes through npm trusted publishing (OIDC), the same path
+  as `@citratelabs/sdk` in citrate-sdk-js `release.yml` (PBA-L6-004). No npm token is read; the
+  job mints a per-run credential with `id-token: write`, upgrades npm to 11.6.2 (trusted
+  publishing needs >= 11.5.1), runs on Node 22, and passes `--provenance`. `setup-node` no longer
+  takes `registry-url`, so no `_authToken` placeholder is written. A re-run on a version already on
+  the registry skips the publish. The tests-before-publish order, the tag/version match and the
+  dist-tag allowlist (SMK-B-001) are unchanged.
+
+### Tests
+
+- `test/publish-workflow.test.ts`: 7 new tests pin the trusted-publishing path (no `NPM_TOKEN`
+  or `NODE_AUTH_TOKEN`, no `registry-url`, `id-token: write`, npm >= 11.5.1 before publish,
+  `--provenance`, skip-if-published, the version and dist-tag gates). 189 -> 196.
+
+### Docs
+
+- README: contract deployment and CitrateScan verification live in `@citratelabs/sdk` >= 0.4.0
+  (`deployAndVerify`, `verifyContract`) and `citrate-labs-sdk` >= 0.8.0 on PyPI
+  (`deploy_and_verify`, `verify_contract`). This package does not deploy contracts: the
+  marketplace contracts it binds are in r1006 block 0.
+
 ## [0.2.0] - 2026-10-27 — r1006 address book and a genesis guard
 
 Held for the r1006 public cutover: publish only after rpc.citrate.ai serves r1006.
