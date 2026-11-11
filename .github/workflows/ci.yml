@@ -33,44 +33,33 @@ jobs:
         run: npm audit || true
 
   # CL-C2 / SW-179: fail the build if the vendored addresses.json / network.json
-  # drift from the canonical citrate-chain r1006 book (contracts/addresses/r1006/
-  # 40204.json) and its genesis hash (R1006_GENESIS, core/consensus/src/hardening.rs). The reusable JS CI only runs
-  # lint/build/test, so vendored-address drift shipped silently. Requires a
-  # read-only token for CitrateNetwork/citrate-chain; inert until GitHub Actions
-  # + CITRATE_CHAIN_READ_TOKEN are available (the local mirror
-  # scripts/check-address-drift.sh runs the identical check meanwhile).
+  # drift from citrate-chain's root book (contracts/addresses/<chain id>.json, the live
+  # network) and its genesisHash, confirmed by the matching R<n>_GENESIS constant in
+  # core/consensus/src/hardening.rs. The reusable JS CI only runs lint/build/test, so
+  # vendored-address drift shipped silently. citrate-chain is public, so the job checks it
+  # out with the workflow token and always runs (it used to skip itself green without a
+  # CITRATE_CHAIN_READ_TOKEN secret, which was never set). scripts/check-address-drift.sh
+  # is the local mirror.
   address-drift:
     runs-on: ubuntu-latest
-    # Internal-only gate (checks vendored addresses against the canonical set in the PRIVATE
-    # citrate-chain). Skips on public/fork CI (no token) so public CI never checks out a private
-    # repo; runs authoritatively on internal pushes once CITRATE_CHAIN_READ_TOKEN is set.
-    env:
-      CHAIN_TOKEN: ${{ secrets.CITRATE_CHAIN_READ_TOKEN }}
     steps:
-      - name: Skipped on public/fork CI (no chain read token)
-        if: env.CHAIN_TOKEN == ''
-        run: echo "address-drift is an internal supply-chain gate; skipped without CITRATE_CHAIN_READ_TOKEN."
       - name: Checkout this repo
-        if: env.CHAIN_TOKEN != ''
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           path: citrate-sdk-marketplace
-      - name: Checkout canonical citrate-chain (sparse)
-        if: env.CHAIN_TOKEN != ''
+      - name: Checkout canonical citrate-chain (sparse, public)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: CitrateNetwork/citrate-chain
           ref: main
-          token: ${{ secrets.CITRATE_CHAIN_READ_TOKEN }}
           path: citrate-chain
+          persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
-            contracts/addresses/r1006/40204.json
+            contracts/addresses/
             core/consensus/src/hardening.rs
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        if: env.CHAIN_TOKEN != ''
         with:
           node-version: 20
       - name: Address drift gate (blocking)
-        if: env.CHAIN_TOKEN != ''
         run: cd citrate-sdk-marketplace && npm run sync-addresses:check
