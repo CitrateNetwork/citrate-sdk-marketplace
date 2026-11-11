@@ -1,10 +1,10 @@
 // r1006 address book + genesis guard.
 //
 // r1005 and r1006 share chain id 40204, so a chain-id check cannot tell
-// them apart. The vendored book is citrate-chain
-// `contracts/addresses/r1006/40204.json`; `src/generated/network.json`
-// carries the r1006 block-0 hash (`R1006_GENESIS` in citrate-chain
-// core/consensus/src/hardening.rs). MarketplaceClient reads block 0 before
+// them apart. The vendored book is citrate-chain's root book
+// `contracts/addresses/40204.json` (r1006 today); `src/generated/network.json`
+// carries its block-0 hash, confirmed by `R1006_GENESIS` in citrate-chain
+// core/consensus/src/hardening.rs. MarketplaceClient reads block 0 before
 // it reads the book's contracts and refuses another network.
 
 import { describe, expect, test, vi } from 'vitest';
@@ -33,11 +33,15 @@ describe('vendored book is the r1006 book', () => {
     expect(canonical.aaStack.CitrateWalletFactory.toLowerCase()).toBe('0x6ee3b59099c9c812cdf1c9e7e6ff166b2558434c');
   });
 
-  test('drops contracts not in r1006 block 0 and leaks no r1005 address', () => {
+  test('drops contracts retired at r1006, carries its post-genesis contracts, leaks no r1005 address', () => {
+    // The vendored book is the root book, which folds r1006's post-genesis contracts in.
     const names = Object.keys(canonical.contracts);
-    for (const gone of ['LiquidStakingPool', 'CitAgentTimelock', 'DefensePrimeComplianceRegistry', 'TenantHierarchy']) {
+    for (const gone of ['LiquidStakingPool', 'CitAgentTimelock']) {
       expect(names).not.toContain(gone);
     }
+    const contracts = canonical.contracts as Record<string, string>;
+    expect(contracts.DefensePrimeComplianceRegistry).toBe('0xb07724913568ac6d72ba696442fb93dd204bd91d');
+    expect(contracts.TenantHierarchy).toBe('0xe1c1674962792ec89dc28f72e99cf9d0edd6bc18');
     const blob = JSON.stringify(canonical).toLowerCase();
     for (const dead of ['0x9ac05ad6', '0x804a8021', '0xf8ad11f6', '0x73270e98', '0xa96a891b', '0x42ae16da']) {
       expect(blob).not.toContain(dead);

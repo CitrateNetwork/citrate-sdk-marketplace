@@ -1,10 +1,10 @@
 // Deployed contract addresses on Citrate testnet (chain id 40204).
 //
 // Reads from a vendored copy of the federation-canonical contract-address
-// table at `src/generated/addresses.json` (source-of-truth: the r1006 book,
-// `citrate-chain/contracts/addresses/r1006/40204.json`) and the genesis block
-// hash of that network at `src/generated/network.json` (citrate-chain
-// `R1006_GENESIS`). After a chain re-roll, run `npm run sync-addresses` from
+// table at `src/generated/addresses.json` (source of truth: the live network,
+// `citrate-chain/contracts/addresses/40204.json`, the root book) and the genesis block
+// hash of that network at `src/generated/network.json` (confirmed by citrate-chain
+// `R<n>_GENESIS`). After a chain re-roll, run `npm run sync-addresses` from
 // this repo root and commit the diff — no inline edit, no chance of drift
 // versus the gateway / node-agent / explorer.
 import type { Address } from 'viem';
