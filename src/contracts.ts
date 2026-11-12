@@ -12,8 +12,8 @@ import type { Address } from 'viem';
 import canonicalAddresses from './generated/addresses.json';
 import canonicalNetwork from './generated/network.json';
 
-/// Block-0 hash of the network the vendored book describes (r1006). r1005 and
-/// r1006 share chain id 40204, so MarketplaceClient compares block 0 with this
+/// Block-0 hash of the network the vendored book describes (r1007 today). r1005, r1006 and
+/// r1007 share chain id 40204, so MarketplaceClient compares block 0 with this
 /// before it reads the book's contracts.
 export const EXPECTED_GENESIS_HASH: string = canonicalNetwork.genesisHash.toLowerCase();
 
