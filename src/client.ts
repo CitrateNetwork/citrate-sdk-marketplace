@@ -59,7 +59,7 @@ export interface MarketplaceClientOptions {
   /// Override deployed addresses; falls back to testnet defaults.
   addresses?: MarketplaceAddresses;
   /// Block-0 hash the chain must report before the client reads a contract.
-  /// Defaults to the vendored book's genesis (`EXPECTED_GENESIS_HASH`, r1006)
+  /// Defaults to the vendored book's genesis (`EXPECTED_GENESIS_HASH`, r1007 today)
   /// when `addresses` is not given, and to no check when it is. `null` skips
   /// the check (a local dev chain).
   expectedGenesisHash?: string | null;
